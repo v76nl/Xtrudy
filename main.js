@@ -1,0 +1,590 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+
+const FONT_URLS = {
+    'sans': 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-japanese-700-normal.woff',
+    'serif': 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-jp@5.0.19/files/noto-serif-jp-japanese-700-normal.woff',
+    'dot': 'https://cdn.jsdelivr.net/npm/@fontsource/dotgothic16@5.0.19/files/dotgothic16-japanese-400-normal.woff',
+    'ramp': 'https://cdn.jsdelivr.net/npm/@fontsource/rampart-one@5.0.19/files/rampart-one-japanese-400-normal.woff'
+};
+
+const state = {
+    mode: 'text',
+    text: '印刷物',
+    fontKey: 'sans',
+    textSize: 10,
+    textSpacing: 1, 
+    modelThickness: 3,
+    svgContent: null,
+    svgScale: 1.0,
+    
+    baseEnabled: true, 
+    basePadding: 2,
+    baseThickness: 1.5,
+    baseRadius: 1,
+    
+    ringEnabled: true,
+    ringShape: 32,
+    ringAutoY: true,
+    ringX: 0,
+    ringY: 0,
+    ringSize: 3,
+    ringTube: 1,
+    ringRot: 0
+};
+
+let currentFont = null;
+
+const canvas = document.querySelector('#gl-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf0f2f5);
+scene.fog = new THREE.Fog(0xf0f2f5, 200, 600);
+
+const gridHelper = new THREE.GridHelper(200, 20, 0xcccccc, 0xe5e5e5);
+gridHelper.rotation.x = Math.PI / 2;
+gridHelper.position.z = -0.1;
+scene.add(gridHelper);
+
+const planeGeometry = new THREE.PlaneGeometry(500, 500);
+const planeMaterial = new THREE.ShadowMaterial({ opacity: 0.15 });
+const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+plane.position.z = -0.2;
+plane.receiveShadow = true;
+scene.add(plane);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+camera.position.set(0, -60, 80);
+camera.lookAt(0, 0, 0);
+camera.up.set(0, 0, 1);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+hemiLight.position.set(0, 0, 50);
+scene.add(hemiLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+dirLight.position.set(50, -50, 100);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.bias = -0.0005;
+scene.add(dirLight);
+
+const materialMain = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.3, side: THREE.DoubleSide });
+const materialBase = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.4, side: THREE.DoubleSide });
+const materialRing = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, side: THREE.DoubleSide });
+
+const groupMain = new THREE.Group();
+const groupBase = new THREE.Group();
+const groupRing = new THREE.Group();
+const rootGroup = new THREE.Group();
+
+rootGroup.add(groupMain);
+rootGroup.add(groupBase);
+rootGroup.add(groupRing);
+scene.add(rootGroup);
+
+function flipYCorrectly(geometry) {
+    geometry.scale(1, -1, 1);
+    const index = geometry.index;
+    if (index) {
+        const array = index.array;
+        for (let i = 0; i < array.length; i += 3) {
+            const temp = array[i];
+            array[i] = array[i + 2];
+            array[i + 2] = temp;
+        }
+    }
+    geometry.computeVertexNormals();
+}
+
+function commandsToShapes(commands) {
+    const shapes = [];
+    let currentShape = new THREE.Shape();
+    
+    commands.forEach(cmd => {
+        switch(cmd.type) {
+            case 'M': 
+                if (currentShape.curves.length > 0) shapes.push(currentShape);
+                currentShape = new THREE.Shape();
+                currentShape.moveTo(cmd.x, cmd.y);
+                break;
+            case 'L': 
+                currentShape.lineTo(cmd.x, cmd.y);
+                break;
+            case 'Q': 
+                currentShape.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y);
+                break;
+            case 'C': 
+                currentShape.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y);
+                break;
+            case 'Z': 
+                currentShape.closePath();
+                break;
+        }
+    });
+    if (currentShape.curves.length > 0) shapes.push(currentShape);
+
+    const shapesWithArea = shapes.map(s => {
+        const area = THREE.ShapeUtils.area(s.getPoints());
+        return { shape: s, area: area, absArea: Math.abs(area) };
+    });
+
+    shapesWithArea.sort((a, b) => b.absArea - a.absArea);
+
+    const finalSolids = [];
+    if (shapesWithArea.length === 0) return [];
+
+    const primarySign = Math.sign(shapesWithArea[0].area);
+
+    shapesWithArea.forEach(item => {
+        if (Math.sign(item.area) === primarySign) {
+            finalSolids.push(item.shape);
+        } else {
+            if (finalSolids.length > 0) {
+                finalSolids[0].holes.push(item.shape);
+            }
+        }
+    });
+    return finalSolids;
+}
+
+function loadFont(key) {
+    const url = FONT_URLS[key];
+    if (!url) return;
+    showLoading(true);
+    opentype.load(url, (err, font) => {
+        if (err) { console.error(err); showLoading(false); }
+        else { currentFont = font; updateGeometry(); showLoading(false); }
+    });
+}
+
+function updateGeometry() {
+    requestAnimationFrame(_generate);
+}
+
+function _generate() {
+    clearGroup(groupMain);
+    clearGroup(groupBase);
+    clearGroup(groupRing);
+
+    let mainBox = new THREE.Box3();
+
+    if (state.mode === 'text' && currentFont) {
+        generateTextRobust(mainBox);
+    } else if (state.mode === 'svg' && state.svgContent) {
+        generateSVG(mainBox);
+    }
+
+    if (state.baseEnabled && !mainBox.isEmpty()) {
+        generateBase(mainBox);
+    }
+
+    if (state.baseEnabled) {
+         const width = (mainBox.max.x - mainBox.min.x) + (state.basePadding * 2);
+         const height = (mainBox.max.y - mainBox.min.y) + (state.basePadding * 2);
+         const midY = (mainBox.max.y + mainBox.min.y) / 2;
+         const baseTopY = midY + height/2;
+         
+         if (state.ringEnabled) {
+             if (state.ringAutoY) {
+                 const outerRadius = state.ringSize + state.ringTube;
+                 const overlap = state.ringTube * 1.5;
+                 state.ringY = Math.round((baseTopY + outerRadius - overlap) * 10) / 10;
+                 
+                 const sliderY = document.getElementById('ring-y');
+                 if (sliderY) {
+                    sliderY.value = state.ringY;
+                    sliderY.disabled = true;
+                    sliderY.style.opacity = '0.5';
+                 }
+             } else {
+                 const sliderY = document.getElementById('ring-y');
+                 if (sliderY) {
+                    sliderY.disabled = false;
+                    sliderY.style.opacity = '1';
+                 }
+             }
+             generateRing();
+         }
+    } else {
+        if (state.ringEnabled) {
+            if (state.ringAutoY && !mainBox.isEmpty()) {
+                const outerRadius = state.ringSize + state.ringTube;
+                const overlap = state.ringTube * 1.5;
+                state.ringY = Math.round((mainBox.max.y + outerRadius - overlap) * 10) / 10;
+                
+                const sliderY = document.getElementById('ring-y');
+                if (sliderY) {
+                    sliderY.value = state.ringY;
+                    sliderY.disabled = true;
+                    sliderY.style.opacity = '0.5';
+                }
+            }
+            generateRing();
+        }
+    }
+    updateDimensionsInfo();
+}
+
+function clearGroup(group) {
+    while(group.children.length > 0){ 
+        const obj = group.children[0];
+        if(obj.geometry) obj.geometry.dispose();
+        group.remove(obj); 
+    }
+}
+
+function generateTextRobust(targetBox) {
+    if (!state.text) return;
+    let cursorX = 0;
+    const size = state.textSize;
+    const spacing = state.textSpacing;
+    const chars = Array.from(state.text);
+    
+    chars.forEach((char) => {
+        const path = currentFont.getPath(char, 0, 0, size);
+        const shapes = commandsToShapes(path.commands);
+
+        if (shapes.length > 0) {
+            const geometry = new THREE.ExtrudeGeometry(shapes, {
+                depth: state.modelThickness,
+                bevelEnabled: false
+            });
+            
+            flipYCorrectly(geometry);
+            geometry.computeBoundingBox();
+
+            const advanceWidth = currentFont.getAdvanceWidth(char, size);
+            const mesh = new THREE.Mesh(geometry, materialMain);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            
+            mesh.position.x = cursorX;
+            mesh.position.z = 0;
+            groupMain.add(mesh);
+            cursorX += advanceWidth + spacing;
+        } else {
+             const advanceWidth = currentFont.getAdvanceWidth(char, size);
+             cursorX += advanceWidth + spacing;
+        }
+    });
+
+    if (groupMain.children.length > 0) {
+        const groupBox = new THREE.Box3();
+        groupMain.children.forEach(mesh => {
+            mesh.geometry.computeBoundingBox();
+            const geomBox = mesh.geometry.boundingBox.clone();
+            geomBox.translate(mesh.position);
+            groupBox.union(geomBox);
+        });
+
+        const midX = (groupBox.max.x + groupBox.min.x) / 2;
+        const midY = (groupBox.max.y + groupBox.min.y) / 2;
+
+        groupMain.children.forEach(c => {
+            c.position.x -= midX;
+            c.position.y -= midY;
+        });
+        
+        targetBox.setFromObject(groupMain);
+    }
+}
+
+function generateSVG(targetBox) {
+    const loader = new SVGLoader();
+    const svgData = loader.parse(state.svgContent);
+    const shapes = [];
+    svgData.paths.forEach((path) => shapes.push(...path.toShapes(true)));
+
+    const geometry = new THREE.ExtrudeGeometry(shapes, {
+        depth: state.modelThickness,
+        bevelEnabled: false
+    });
+
+    geometry.scale(state.svgScale, -state.svgScale, 1);
+    geometry.computeBoundingBox();
+
+    const midX = (geometry.boundingBox.max.x + geometry.boundingBox.min.x) / 2;
+    const midY = (geometry.boundingBox.max.y + geometry.boundingBox.min.y) / 2;
+    geometry.translate(-midX, -midY, 0);
+
+    const mesh = new THREE.Mesh(geometry, materialMain);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    groupMain.add(mesh);
+    targetBox.copy(geometry.boundingBox);
+}
+
+function generateBase(targetBox) {
+    const width = (targetBox.max.x - targetBox.min.x) + (state.basePadding * 2);
+    const height = (targetBox.max.y - targetBox.min.y) + (state.basePadding * 2);
+    const radius = state.baseRadius;
+
+    const shape = new THREE.Shape();
+    const x = -width / 2;
+    const y = -height / 2;
+
+    shape.moveTo(x + radius, y);
+    shape.lineTo(x + width - radius, y);
+    shape.quadraticCurveTo(x + width, y, x + width, y + radius);
+    shape.lineTo(x + width, y + height - radius);
+    shape.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    shape.lineTo(x + radius, y + height);
+    shape.quadraticCurveTo(x, y + height, x, y + height - radius);
+    shape.lineTo(x, y + radius);
+    shape.quadraticCurveTo(x, y, x + radius, y);
+
+    const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: state.baseThickness,
+        bevelEnabled: false
+    });
+
+    const mesh = new THREE.Mesh(geometry, materialBase);
+    mesh.position.z = 0; 
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    groupBase.add(mesh);
+}
+
+function generateRing() {
+    const segs = parseInt(state.ringShape);
+    const geometry = new THREE.TorusGeometry(state.ringSize, state.ringTube, 16, segs);
+    const mesh = new THREE.Mesh(geometry, materialRing);
+    
+    // Z位置をベースの厚みに依存するように変更
+    const ringZ = state.baseEnabled ? (state.baseThickness / 2) : (state.modelThickness / 2);
+    mesh.position.set(state.ringX, state.ringY, ringZ);
+    
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    let baseRotation = (state.ringRot * Math.PI) / 180;
+    if (segs === 3) baseRotation += (Math.PI / 6); 
+    mesh.rotation.z = baseRotation;
+    groupRing.add(mesh);
+}
+
+function updateDimensionsInfo() {
+    rootGroup.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(rootGroup);
+    if (box.isEmpty()) {
+        const dimInfo = document.getElementById('dimensions-info');
+        if (dimInfo) dimInfo.innerHTML = 'W: 0 mm<br>H: 0 mm<br>D: 0 mm';
+        return;
+    }
+    const w = (box.max.x - box.min.x).toFixed(1);
+    const h = (box.max.y - box.min.y).toFixed(1);
+    const d = (box.max.z - box.min.z).toFixed(1);
+    const dimInfo = document.getElementById('dimensions-info');
+    if (dimInfo) dimInfo.innerHTML = `W: ${w} mm<br>H: ${h} mm<br>D: ${d} mm`;
+}
+
+function showLoading(show) {
+    const loading = document.getElementById('loading');
+    if (loading) loading.style.display = show ? 'block' : 'none';
+}
+
+const btnText = document.getElementById('mode-text');
+const btnSvg = document.getElementById('mode-svg');
+function setMode(m) {
+    const btnText = document.getElementById('mode-text');
+    const btnSvg = document.getElementById('mode-svg');
+    state.mode = m;
+    if (m === 'text') {
+        if (btnText) btnText.className = 'flex-1 py-1 px-2 btn-mode-active rounded text-sm transition';
+        if (btnSvg) btnSvg.className = 'flex-1 py-1 px-2 btn-mode-inactive rounded text-sm transition';
+        const ctrlText = document.getElementById('controls-text');
+        if (ctrlText) ctrlText.style.display = 'block';
+        const ctrlSvg = document.getElementById('controls-svg');
+        if (ctrlSvg) ctrlSvg.style.display = 'none';
+    } else {
+        if (btnSvg) btnSvg.className = 'flex-1 py-1 px-2 btn-mode-active rounded text-sm transition';
+        if (btnText) btnText.className = 'flex-1 py-1 px-2 btn-mode-inactive rounded text-sm transition';
+        const ctrlText = document.getElementById('controls-text');
+        if (ctrlText) ctrlText.style.display = 'none';
+        const ctrlSvg = document.getElementById('controls-svg');
+        if (ctrlSvg) ctrlSvg.style.display = 'block';
+    }
+    updateGeometry();
+}
+if (btnText) btnText.onclick = () => setMode('text');
+if (btnSvg) btnSvg.onclick = () => setMode('svg');
+
+const inputText = document.getElementById('input-text');
+if (inputText) {
+    inputText.addEventListener('input', (e) => {
+        const val = e.target.value;
+        state.text = val;
+        if (val.length > 1 && !state.baseEnabled) {
+            state.baseEnabled = true;
+            const baseEnable = document.getElementById('base-enable');
+            if (baseEnable) baseEnable.checked = true;
+            const c = document.getElementById('controls-base');
+            if (c) {
+                c.style.opacity = '1'; c.style.pointerEvents = 'auto';
+            }
+        }
+        updateGeometry();
+    });
+}
+
+const textSizeSlider = document.getElementById('text-size');
+if (textSizeSlider) {
+    textSizeSlider.addEventListener('input', (e) => {
+        state.textSize = parseFloat(e.target.value);
+        updateGeometry();
+    });
+}
+
+const textSpacingSlider = document.getElementById('text-spacing');
+if (textSpacingSlider) {
+    textSpacingSlider.addEventListener('input', (e) => {
+        state.textSpacing = parseFloat(e.target.value);
+        updateGeometry();
+    });
+}
+
+const fontSelect = document.getElementById('font-select');
+if (fontSelect) {
+    fontSelect.addEventListener('change', (e) => {
+        state.fontKey = e.target.value;
+        loadFont(state.fontKey);
+    });
+}
+
+const thicknessSlider = document.getElementById('model-thickness');
+if (thicknessSlider) {
+    thicknessSlider.addEventListener('input', (e) => {
+        state.modelThickness = parseFloat(e.target.value);
+        const valThick = document.getElementById('val-thickness');
+        if (valThick) valThick.textContent = state.modelThickness + 'mm';
+        updateGeometry();
+    });
+}
+
+const fileInput = document.getElementById('input-file');
+if (fileInput) {
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => { state.svgContent = evt.target.result; updateGeometry(); };
+        reader.readAsText(file);
+    });
+}
+
+const svgScaleSlider = document.getElementById('svg-scale');
+if (svgScaleSlider) {
+    svgScaleSlider.addEventListener('input', (e) => {
+        state.svgScale = parseFloat(e.target.value);
+        updateGeometry();
+    });
+}
+
+const baseEnableCheck = document.getElementById('base-enable');
+if (baseEnableCheck) {
+    baseEnableCheck.addEventListener('change', (e) => {
+        state.baseEnabled = e.target.checked;
+        const c = document.getElementById('controls-base');
+        if (c) {
+            c.style.opacity = state.baseEnabled ? '1' : '0.5';
+            c.style.pointerEvents = state.baseEnabled ? 'auto' : 'none';
+        }
+        updateGeometry();
+    });
+}
+
+['base-padding', 'base-thickness', 'base-radius'].forEach(id => {
+    const slider = document.getElementById(id);
+    if (slider) {
+        slider.addEventListener('input', (e) => {
+            const prop = id.replace(/-([a-z])/g, (g) => g[1].toUpperCase()).replace('base', 'base');
+            state[prop] = parseFloat(e.target.value);
+            updateGeometry();
+        });
+    }
+});
+
+const ringEnableCheck = document.getElementById('ring-enable');
+if (ringEnableCheck) {
+    ringEnableCheck.addEventListener('change', (e) => {
+        state.ringEnabled = e.target.checked;
+        const c = document.getElementById('controls-ring');
+        if (c) {
+            c.style.opacity = state.ringEnabled ? '1' : '0.5';
+            c.style.pointerEvents = state.ringEnabled ? 'auto' : 'none';
+        }
+        updateGeometry();
+    });
+}
+
+const ringAutoYCheck = document.getElementById('ring-auto-y');
+if (ringAutoYCheck) {
+    ringAutoYCheck.addEventListener('change', (e) => {
+        state.ringAutoY = e.target.checked;
+        updateGeometry();
+    });
+}
+
+['ring-x', 'ring-y', 'ring-size', 'ring-tube', 'ring-rot', 'ring-shape'].forEach(id => {
+    const slider = document.getElementById(id);
+    if (slider) {
+        slider.addEventListener('input', (e) => {
+            const prop = id.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+            state[prop] = parseFloat(e.target.value);
+            updateGeometry();
+        });
+    }
+});
+
+const exportBtn = document.getElementById('btn-export');
+if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+        const exporter = new STLExporter();
+        const result = exporter.parse(rootGroup, { binary: true });
+        const blob = new Blob([result], { type: 'application/octet-stream' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `keychain_v3.5_${Date.now()}.stl`;
+        link.click();
+    });
+}
+
+const uiPanel = document.getElementById('ui-panel');
+const btnToggle = document.getElementById('toggle-ui');
+if (btnToggle && uiPanel) {
+    btnToggle.addEventListener('click', () => {
+        uiPanel.classList.toggle('collapsed');
+        btnToggle.textContent = uiPanel.classList.contains('collapsed') ? 'Show UI' : 'Hide UI';
+    });
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+loadFont('sans');
+animate();
