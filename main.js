@@ -226,7 +226,7 @@ function _generate() {
          const baseTopY = midY + height/2;
          
          if (state.ringEnabled) {
-             if (state.ringAutoY) {
+                 if (state.ringAutoY) {
                  const outerRadius = state.ringSize + state.ringTube;
                  const overlap = state.ringTube * 1.5;
                  state.ringY = Math.round((baseTopY + outerRadius - overlap) * 10) / 10;
@@ -237,11 +237,22 @@ function _generate() {
                     sliderY.disabled = true;
                     sliderY.style.opacity = '0.5';
                  }
-             } else {
+                 const valY = document.getElementById('val-ring-y');
+                 if (valY) {
+                    valY.value = state.ringY;
+                    valY.disabled = true;
+                    valY.style.opacity = '0.5';
+                 }
+              } else {
                  const sliderY = document.getElementById('ring-y');
                  if (sliderY) {
                     sliderY.disabled = false;
                     sliderY.style.opacity = '1';
+                 }
+                 const valY = document.getElementById('val-ring-y');
+                 if (valY) {
+                    valY.disabled = false;
+                    valY.style.opacity = '1';
                  }
              }
              generateRing();
@@ -258,6 +269,12 @@ function _generate() {
                     sliderY.value = state.ringY;
                     sliderY.disabled = true;
                     sliderY.style.opacity = '0.5';
+                }
+                const valY = document.getElementById('val-ring-y');
+                if (valY) {
+                    valY.value = state.ringY;
+                    valY.disabled = true;
+                    valY.style.opacity = '0.5';
                 }
             }
             generateRing();
@@ -565,16 +582,42 @@ if (ringAutoYCheck) {
     });
 }
 
-['ring-x', 'ring-y', 'ring-size', 'ring-tube', 'ring-rot', 'ring-shape'].forEach(id => {
+// Ring sliders with bidirectional number inputs
+['ring-x', 'ring-y', 'ring-size', 'ring-tube', 'ring-rot'].forEach(id => {
     const slider = document.getElementById(id);
+    const numInput = document.getElementById('val-' + id);
+    const prop = id.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+
     if (slider) {
         slider.addEventListener('input', (e) => {
-            const prop = id.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-            state[prop] = parseFloat(e.target.value);
+            const val = parseFloat(e.target.value);
+            state[prop] = val;
+            if (numInput) numInput.value = val;
+            updateGeometry();
+        });
+    }
+    if (numInput) {
+        numInput.addEventListener('input', (e) => {
+            let val = parseFloat(e.target.value);
+            if (isNaN(val)) return;
+            if (slider) {
+                val = Math.min(parseFloat(slider.max), Math.max(parseFloat(slider.min), val));
+                slider.value = val;
+            }
+            state[prop] = val;
             updateGeometry();
         });
     }
 });
+
+// ring-shape (select, no number input)
+const ringShapeEl = document.getElementById('ring-shape');
+if (ringShapeEl) {
+    ringShapeEl.addEventListener('input', (e) => {
+        state.ringShape = parseFloat(e.target.value);
+        updateGeometry();
+    });
+}
 
 const exportBtn = document.getElementById('btn-export');
 if (exportBtn) {
