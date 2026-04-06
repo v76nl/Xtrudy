@@ -3,6 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Clipper, Paths64, FillRule } from 'clipper2-js';
 
 const FONT_URLS = {
     'sans': 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5/files/noto-sans-jp-japanese-700-normal.woff',
@@ -137,56 +139,165 @@ function flipYCorrectly(geometry, scaleX = 1, scaleY = -1, scaleZ = 1) {
     }
 }
 
+// ─── Clipper2 ユーティリティ ───────────────────────────────────────────────────
+// clipper2-js は整数座標で動作するため、浮動小数点座標をスケールして渡す
+const CLIPPER_SCALE = 1e6;
+
+/**
+ * THREE.Shape の点列 → Clipper の Path64（整数座標の配列）に変換
+ */
+function threeShapeToPath64(shape, curveSegments = 12) {
+    const pts = shape.getPoints(curveSegments);
+    const path = pts.map(p => ({
+        x: Math.round(p.x * CLIPPER_SCALE),
+        y: Math.round(p.y * CLIPPER_SCALE)
+    }));
+    return path;
+}
+
+/**
+ * Clipper の Paths64 結果 → THREE.Shape[] に変換
+ * NonZero Union 後の外形リングはすべて solid として扱い、
+ * 面積の符号でホール（穴）を判別する。
+ */
+function paths64ToThreeShapes(paths64) {
+    if (!paths64 || paths64.length === 0) return [];
+
+    // 各パスを THREE.Shape に変換し面積を計算
+    const shapeItems = paths64.map(path => {
+        if (path.length < 3) return null;
+        const pts = path.map(p => new THREE.Vector2(
+            p.x / CLIPPER_SCALE,
+            p.y / CLIPPER_SCALE
+        ));
+        const s = new THREE.Shape(pts);
+        const area = THREE.ShapeUtils.area(pts);
+        return { shape: s, area, pts };
+    }).filter(Boolean);
+
+    if (shapeItems.length === 0) return [];
+
+    // 面積の絶対値でソート（大きいものが外形）
+    shapeItems.sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
+
+    const primarySign = Math.sign(shapeItems[0].area);
+    const solids = [];
+
+    shapeItems.forEach(item => {
+        if (Math.sign(item.area) === primarySign) {
+            solids.push(item.shape);
+        } else {
+            // 符号が逆 → ホール。面積最大のソリッドに追加
+            if (solids.length > 0) {
+                solids[0].holes.push(item.shape);
+            }
+        }
+    });
+
+    return solids;
+}
+
+/**
+ * opentype のコマンド列 → clipper2-js で Union してクリーンな THREE.Shape[] を返す
+ *
+ * 変更前: THREE.Shape を直接生成 → 自己交差パスがそのままExtrudeGeometryに流れ込む
+ * 変更後: Clipper Union で2D段階の自己交差を解消してから THREE.Shape に変換
+ */
 function commandsToShapes(commands) {
-    const shapes = [];
+    // ① まず M コマンドごとに subpath を分割して THREE.Shape の点列を作る
+    const rawShapes = [];
     let currentShape = new THREE.Shape();
-    
+
     commands.forEach(cmd => {
         switch(cmd.type) {
-            case 'M': 
+            case 'M':
+                if (currentShape.curves.length > 0) rawShapes.push(currentShape);
+                currentShape = new THREE.Shape();
+                currentShape.moveTo(cmd.x, cmd.y);
+                break;
+            case 'L':
+                currentShape.lineTo(cmd.x, cmd.y);
+                break;
+            case 'Q':
+                currentShape.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y);
+                break;
+            case 'C':
+                currentShape.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y);
+                break;
+            case 'Z':
+                currentShape.closePath();
+                break;
+        }
+    });
+    if (currentShape.curves.length > 0) rawShapes.push(currentShape);
+    if (rawShapes.length === 0) return [];
+
+    // ② 各 subpath を Clipper の Path64 に変換
+    const paths = new Paths64();
+    rawShapes.forEach(shape => {
+        const path64 = threeShapeToPath64(shape, 12);
+        if (path64.length >= 3) paths.push(path64);
+    });
+
+    if (paths.length === 0) return [];
+
+    // ③ Clipper Union で自己交差を解消（NonZero ルール）
+    let unified;
+    try {
+        unified = Clipper.Union(paths, undefined, FillRule.NonZero);
+    } catch (e) {
+        console.warn('Clipper Union failed, falling back to raw shapes:', e);
+        // フォールバック: Union 失敗時は従来通りの処理
+        return rawShapesFallback(commands);
+    }
+
+    if (!unified || unified.length === 0) return [];
+
+    // ④ Union 結果を THREE.Shape[] に変換して返す
+    return paths64ToThreeShapes(unified);
+}
+
+/**
+ * Clipper が失敗した場合の従来フォールバック処理
+ */
+function rawShapesFallback(commands) {
+    const shapes = [];
+    let currentShape = new THREE.Shape();
+
+    commands.forEach(cmd => {
+        switch(cmd.type) {
+            case 'M':
                 if (currentShape.curves.length > 0) shapes.push(currentShape);
                 currentShape = new THREE.Shape();
                 currentShape.moveTo(cmd.x, cmd.y);
                 break;
-            case 'L': 
-                currentShape.lineTo(cmd.x, cmd.y);
-                break;
-            case 'Q': 
-                currentShape.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y);
-                break;
-            case 'C': 
-                currentShape.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y);
-                break;
-            case 'Z': 
-                currentShape.closePath();
-                break;
+            case 'L': currentShape.lineTo(cmd.x, cmd.y); break;
+            case 'Q': currentShape.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y); break;
+            case 'C': currentShape.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y); break;
+            case 'Z': currentShape.closePath(); break;
         }
     });
     if (currentShape.curves.length > 0) shapes.push(currentShape);
 
     const shapesWithArea = shapes.map(s => {
         const area = THREE.ShapeUtils.area(s.getPoints());
-        return { shape: s, area: area, absArea: Math.abs(area) };
+        return { shape: s, area, absArea: Math.abs(area) };
     });
-
     shapesWithArea.sort((a, b) => b.absArea - a.absArea);
-
     const finalSolids = [];
     if (shapesWithArea.length === 0) return [];
-
     const primarySign = Math.sign(shapesWithArea[0].area);
-
     shapesWithArea.forEach(item => {
         if (Math.sign(item.area) === primarySign) {
             finalSolids.push(item.shape);
         } else {
-            if (finalSolids.length > 0) {
-                finalSolids[0].holes.push(item.shape);
-            }
+            if (finalSolids.length > 0) finalSolids[0].holes.push(item.shape);
         }
     });
     return finalSolids;
 }
+
+
 
 function loadFont(key) {
     const url = FONT_URLS[key];
@@ -622,15 +733,64 @@ if (ringShapeEl) {
 const exportBtn = document.getElementById('btn-export');
 if (exportBtn) {
     exportBtn.addEventListener('click', () => {
-        const exporter = new STLExporter();
-        const result = exporter.parse(rootGroup, { binary: true });
-        const blob = new Blob([result], { type: 'application/octet-stream' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `keychain_v3.5_${Date.now()}.stl`;
-        link.click();
+        exportBtn.disabled = true;
+        exportBtn.textContent = 'Processing...';
+
+        // 少し遅延させてUIを更新させてから処理
+        setTimeout(() => {
+            try {
+                const exporter = new STLExporter();
+
+                // ── Layer 2: 全メッシュをワールド座標でマージ → mergeVertices で頂点統合 ──
+                rootGroup.updateMatrixWorld(true);
+
+                const geometries = [];
+                rootGroup.traverse(obj => {
+                    if (!obj.isMesh || !obj.geometry) return;
+                    // ジオメトリをクローンしてワールド変換を適用
+                    const geo = obj.geometry.clone();
+                    geo.applyMatrix4(obj.matrixWorld);
+                    geometries.push(geo);
+                });
+
+                let exportTarget;
+                if (geometries.length > 0) {
+                    // 全ジオメトリを1つに統合
+                    const merged = mergeGeometries(geometries, false);
+                    geometries.forEach(g => g.dispose());
+
+                    if (merged) {
+                        // 重複頂点・T字交差を除去（tolerance: 0.1μm）
+                        const cleaned = mergeVertices(merged, 1e-4);
+                        merged.dispose();
+                        cleaned.computeVertexNormals();
+
+                        // 一時メッシュ（マテリアルなし）に入れてエクスポート
+                        const tempMesh = new THREE.Mesh(cleaned);
+                        exportTarget = tempMesh;
+                    }
+                }
+
+                // フォールバック: 統合失敗時はそのまま
+                if (!exportTarget) exportTarget = rootGroup;
+
+                const result = exporter.parse(exportTarget, { binary: true });
+                const blob = new Blob([result], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `keychain_v3.5_${Date.now()}.stl`;
+                link.click();
+            } catch (err) {
+                console.error('Export error:', err);
+                alert('エクスポートに失敗しました: ' + err.message);
+            } finally {
+                exportBtn.disabled = false;
+                exportBtn.textContent = 'Export STL';
+            }
+        }, 50);
     });
 }
+
 
 const uiPanel = document.getElementById('ui-panel');
 const btnToggle = document.getElementById('toggle-ui');
