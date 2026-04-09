@@ -36,7 +36,8 @@ const state = {
     ringY: 0,
     ringSize: 3,
     ringTube: 1,
-    ringRot: 0
+    ringRot: 0,
+    ringReinforce: false
 };
 
 let currentFont = null;
@@ -368,6 +369,9 @@ function _generate() {
                  }
              }
              generateRing();
+             if (parseInt(state.ringShape) === 32 && state.ringReinforce) {
+                 generateRingReinforcement(baseTopY);
+             }
          }
     } else {
         if (state.ringEnabled) {
@@ -390,6 +394,10 @@ function _generate() {
                 }
             }
             generateRing();
+            if (parseInt(state.ringShape) === 32 && state.ringReinforce) {
+                const connY = !mainBox.isEmpty() ? mainBox.max.y : (state.ringY - (state.ringSize + state.ringTube));
+                generateRingReinforcement(connY);
+            }
         }
     }
     // ハンコ用左右反転: groupMain の X スケールで鏡像化
@@ -555,6 +563,54 @@ function generateRing() {
     let baseRotation = (state.ringRot * Math.PI) / 180;
     if (segs === 3) baseRotation += (Math.PI / 6); 
     mesh.rotation.z = baseRotation;
+    groupRing.add(mesh);
+}
+
+/**
+ * 中空円柱リングとベース板を繋ぐ補強板を生成する
+ * 形状: 円の外周下弧 + ベース板上辺(の円の投影線分) を閉じた2D Shape を押し出す
+ */
+function generateRingReinforcement(baseTopY) {
+    const outerR = state.ringSize + state.ringTube;
+    const cylHeight = state.ringTube * 2;
+    const ringZ = state.baseEnabled ? (state.baseThickness / 2) : (state.modelThickness / 2);
+
+    // リング中心を原点とした相対Y
+    const localBaseY = baseTopY - state.ringY;
+    if (localBaseY >= 0 || localBaseY <= -outerR * 2) return; // 範囲外
+
+    const shape = new THREE.Shape();
+
+    if (localBaseY > -outerR) {
+        // ケースA: ベース上辺が円の外周と交わる
+        const hw = Math.sqrt(outerR * outerR - localBaseY * localBaseY);
+        const theta1 = Math.atan2(localBaseY, -hw);         // 左交点の角度
+        let theta2   = Math.atan2(localBaseY,  hw);          // 右交点の角度
+        if (theta2 < 0) theta2 += 2 * Math.PI;              // [0, 2π] に正規化
+
+        shape.moveTo(hw, localBaseY);                        // B: 右交点
+        shape.lineTo(-hw, localBaseY);                       // ベース線（右→左）
+        shape.absarc(0, 0, outerR, theta1, theta2, false);  // CCW弧: 左→右 (下を経由)
+    } else {
+        // ケースB: ベース上辺が円全体の下にある
+        shape.moveTo( outerR, localBaseY);                   // 右下
+        shape.lineTo(-outerR, localBaseY);                   // 左下（ベース線）
+        shape.lineTo(-outerR, 0);                            // 左壁を上へ
+        shape.absarc(0, 0, outerR, Math.PI, 2 * Math.PI, false); // CCW弧: 左→底→右
+        // (outerR, 0) → (outerR, localBaseY) は自動クローズ
+    }
+
+    const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: cylHeight,
+        bevelEnabled: false,
+        curveSegments: 32
+    });
+    geometry.translate(0, 0, -cylHeight / 2);
+
+    const mesh = new THREE.Mesh(geometry, materialRing);
+    mesh.position.set(state.ringX, state.ringY, ringZ);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     groupRing.add(mesh);
 }
 
@@ -749,10 +805,23 @@ if (ringAutoYCheck) {
 });
 
 // ring-shape (select, no number input)
+function updateReinforceVisibility() {
+    const ctrl = document.getElementById('ctrl-ring-reinforce');
+    if (ctrl) ctrl.style.display = parseInt(state.ringShape) === 32 ? 'flex' : 'none';
+}
 const ringShapeEl = document.getElementById('ring-shape');
 if (ringShapeEl) {
     ringShapeEl.addEventListener('input', (e) => {
         state.ringShape = parseFloat(e.target.value);
+        updateReinforceVisibility();
+        updateGeometry();
+    });
+}
+
+const ringReinforceCheck = document.getElementById('ring-reinforce');
+if (ringReinforceCheck) {
+    ringReinforceCheck.addEventListener('change', (e) => {
+        state.ringReinforce = e.target.checked;
         updateGeometry();
     });
 }
