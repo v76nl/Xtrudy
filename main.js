@@ -22,6 +22,7 @@ const state = {
     modelThickness: 3,
     svgContent: null,
     svgScale: 1.0,
+    mirrorX: false,
     
     baseEnabled: true, 
     basePadding: 2,
@@ -391,6 +392,9 @@ function _generate() {
             generateRing();
         }
     }
+    // ハンコ用左右反転: groupMain の X スケールで鏡像化
+    groupMain.scale.x = state.mirrorX ? -1 : 1;
+
     updateDimensionsInfo();
 }
 
@@ -791,6 +795,13 @@ if (exportBtn) {
     });
 }
 
+const mirrorCheck = document.getElementById('mirror-x');
+if (mirrorCheck) {
+    mirrorCheck.addEventListener('change', (e) => {
+        state.mirrorX = e.target.checked;
+        updateGeometry();
+    });
+}
 
 const uiPanel = document.getElementById('ui-panel');
 const btnToggle = document.getElementById('toggle-ui');
