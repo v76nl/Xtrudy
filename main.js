@@ -520,7 +520,30 @@ function generateBase(targetBox) {
 
 function generateRing() {
     const segs = parseInt(state.ringShape);
-    const geometry = new THREE.TorusGeometry(state.ringSize, state.ringTube, 16, segs);
+    let geometry;
+
+    if (segs === 32) {
+        // 中空円柱: 外円 - 内円 の Shape を押し出して X 軸で 90° 回転
+        const outerR = state.ringSize + state.ringTube;
+        const innerR = Math.max(0.1, state.ringSize - state.ringTube);
+        const cylHeight = state.ringTube * 2;
+
+        const shape = new THREE.Shape();
+        shape.absarc(0, 0, outerR, 0, Math.PI * 2, false);
+        const hole = new THREE.Path();
+        hole.absarc(0, 0, innerR, 0, Math.PI * 2, true);
+        shape.holes.push(hole);
+
+        geometry = new THREE.ExtrudeGeometry(shape, {
+            depth: cylHeight,
+            bevelEnabled: false,
+            curveSegments: 32
+        });
+        geometry.translate(0, 0, -cylHeight / 2); // 中心を原点に
+    } else {
+        geometry = new THREE.TorusGeometry(state.ringSize, state.ringTube, 16, segs);
+    }
+
     const mesh = new THREE.Mesh(geometry, materialRing);
     
     const ringZ = state.baseEnabled ? (state.baseThickness / 2) : (state.modelThickness / 2);
