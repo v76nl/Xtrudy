@@ -900,7 +900,7 @@ const btnToggle = document.getElementById('toggle-ui');
 if (btnToggle && uiPanel) {
     btnToggle.addEventListener('click', () => {
         uiPanel.classList.toggle('collapsed');
-        btnToggle.textContent = uiPanel.classList.contains('collapsed') ? 'Show UI' : 'Hide UI';
+        btnToggle.textContent = uiPanel.classList.contains('collapsed') ? 'UIを表示' : 'UIを隠す';
     });
 }
 
