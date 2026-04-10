@@ -6,15 +6,18 @@ import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Clipper, Paths64, FillRule } from 'clipper2-js';
 
+// フォントキー -> CDN上の woff ファイル URL
 const FONT_URLS = {
-    'sans': 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5/files/noto-sans-jp-japanese-700-normal.woff',
+    'sans':  'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5/files/noto-sans-jp-japanese-700-normal.woff',
     'serif': 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-jp@5/files/noto-serif-jp-japanese-700-normal.woff',
-    'dot': 'https://cdn.jsdelivr.net/npm/@fontsource/dotgothic16@5/files/dotgothic16-japanese-400-normal.woff',
-    'ramp': 'https://cdn.jsdelivr.net/npm/@fontsource/rampart-one@5/files/rampart-one-japanese-400-normal.woff'
+    'dot':   'https://cdn.jsdelivr.net/npm/@fontsource/dotgothic16@5/files/dotgothic16-japanese-400-normal.woff',
+    'ramp':  'https://cdn.jsdelivr.net/npm/@fontsource/rampart-one@5/files/rampart-one-japanese-400-normal.woff'
 };
 
+// アプリケーション状態 (UIの初期値はすべてここで管理し、initUIFromState() で DOM に反映する)
 const state = {
-    mode: 'text',
+    // 入力ソース
+    mode: 'text',       // 'text' | 'svg'
     text: '印刷物',
     fontKey: 'sans',
     textSize: 10,
@@ -22,15 +25,17 @@ const state = {
     modelThickness: 3,
     svgContent: null,
     svgScale: 1.0,
-    mirrorX: false,
-    
-    baseEnabled: true, 
+    mirrorX: false,     // ハンコ用の左右反転
+
+    // 土台プレート
+    baseEnabled: true,
     basePadding: 2,
-    baseThickness: 2,
+    baseThickness: 2,   // ストラップリング(真円)の cylHeight = ringTube*2 に揃える
     baseRadius: 5,
-    
+
+    // ストラップリング
     ringEnabled: true,
-    ringShape: 32,
+    ringShape: 32,      // セグメント数。32=真円(中空円柱)、その他=トーラス
     ringAutoY: true,
     ringX: 0,
     ringY: 0,
@@ -42,6 +47,7 @@ const state = {
 
 let currentFont = null;
 
+// Three.js セットアップ
 const canvas = document.querySelector('#gl-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -53,6 +59,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf0f2f5);
 scene.fog = new THREE.Fog(0xf0f2f5, 200, 600);
 
+// グリッドと影受け平面 (Z軸が上を向くよう X回転)
 const gridHelper = new THREE.GridHelper(200, 20, 0xcccccc, 0xe5e5e5);
 gridHelper.rotation.x = Math.PI / 2;
 gridHelper.position.z = -0.1;
@@ -65,6 +72,7 @@ plane.position.z = -0.2;
 plane.receiveShadow = true;
 scene.add(plane);
 
+// カメラ (Z軸を上に設定してモデルを正面から見る)
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
 camera.position.set(0, -60, 80);
 camera.lookAt(0, 0, 0);
@@ -74,6 +82,7 @@ const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 
+// ライティング
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
 scene.add(ambientLight);
 
@@ -88,10 +97,12 @@ dirLight.shadow.mapSize.set(2048, 2048);
 dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
+// マテリアル (メインモデル / 土台 / リング)
 const materialMain = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.3, side: THREE.DoubleSide });
 const materialBase = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.4, side: THREE.DoubleSide });
 const materialRing = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, side: THREE.DoubleSide });
 
+// シーングラフ (rootGroup 以下に全メッシュをまとめ、STL エクスポート時に一括処理)
 const groupMain = new THREE.Group();
 const groupBase = new THREE.Group();
 const groupRing = new THREE.Group();
@@ -102,13 +113,17 @@ rootGroup.add(groupBase);
 rootGroup.add(groupRing);
 scene.add(rootGroup);
 
+// スケールで Y 反転しつつ法線を正しく保つ。
+// Three.js の ExtrudeGeometry は opentype / SVG の Y軸と向きが逆になるため、
+// scaleY=-1 を使って上下を反転する。負のスケールは面の裏表を逆にするので
+// 頂点インデックスの順番を入れ替えて法線の向きを戻す。
 function flipYCorrectly(geometry, scaleX = 1, scaleY = -1, scaleZ = 1) {
     geometry.scale(scaleX, scaleY, scaleZ);
-    
-    // スケールで反転（鏡像）が生じる場合、面の向き（法線）が裏返るため頂点の順番を修正する
+
     if (scaleX * scaleY * scaleZ < 0) {
         const index = geometry.index;
         if (index) {
+            // インデックス付きジオメトリ
             const array = index.array;
             for (let i = 0; i < array.length; i += 3) {
                 const temp = array[i];
@@ -116,7 +131,7 @@ function flipYCorrectly(geometry, scaleX = 1, scaleY = -1, scaleZ = 1) {
                 array[i + 2] = temp;
             }
         } else {
-            // Non-indexed geometry (ExtrudeGeometry通常時) の対応
+            // 非インデックスジオメトリ (ExtrudeGeometry のデフォルト)
             const pos = geometry.attributes.position;
             const array = pos.array;
             for (let i = 0; i < array.length; i += 9) {
@@ -141,13 +156,11 @@ function flipYCorrectly(geometry, scaleX = 1, scaleY = -1, scaleZ = 1) {
     }
 }
 
-// ─── Clipper2 ユーティリティ ───────────────────────────────────────────────────
-// clipper2-js は整数座標で動作するため、浮動小数点座標をスケールして渡す
+// Clipper2 ユーティリティ
+// clipper2-js は整数座標で動作するため、浮動小数点座標を整数にスケールして渡す
 const CLIPPER_SCALE = 1e6;
 
-/**
- * THREE.Shape の点列 → Clipper の Path64（整数座標の配列）に変換
- */
+// THREE.Shape の点列を Clipper 用の整数座標 Path64 に変換する
 function threeShapeToPath64(shape, curveSegments = 12) {
     const pts = shape.getPoints(curveSegments);
     const path = pts.map(p => ({
@@ -157,11 +170,8 @@ function threeShapeToPath64(shape, curveSegments = 12) {
     return path;
 }
 
-/**
- * Clipper の Paths64 結果 → THREE.Shape[] に変換
- * NonZero Union 後の外形リングはすべて solid として扱い、
- * 面積の符号でホール（穴）を判別する。
- */
+// Clipper の Paths64 結果を THREE.Shape[] に変換する。
+// NonZero Union 後のリングを面積の符号でソリッド/ホールに振り分ける。
 function paths64ToThreeShapes(paths64) {
     if (!paths64 || paths64.length === 0) return [];
 
@@ -199,14 +209,11 @@ function paths64ToThreeShapes(paths64) {
     return solids;
 }
 
-/**
- * opentype のコマンド列 → clipper2-js で Union してクリーンな THREE.Shape[] を返す
- *
- * 変更前: THREE.Shape を直接生成 → 自己交差パスがそのままExtrudeGeometryに流れ込む
- * 変更後: Clipper Union で2D段階の自己交差を解消してから THREE.Shape に変換
- */
+// opentype のコマンド列を clipper2-js で Boolean Union し、自己交差のないクリーンな
+// THREE.Shape[] を返す。Union することで 'X' のような交差フォントパスでも
+// スライサーが非多様体エラーを起こさない STL を生成できる。
 function commandsToShapes(commands) {
-    // ① まず M コマンドごとに subpath を分割して THREE.Shape の点列を作る
+    // M コマンドごとに subpath に分割して THREE.Shape の点列を作る
     const rawShapes = [];
     let currentShape = new THREE.Shape();
 
@@ -234,7 +241,7 @@ function commandsToShapes(commands) {
     if (currentShape.curves.length > 0) rawShapes.push(currentShape);
     if (rawShapes.length === 0) return [];
 
-    // ② 各 subpath を Clipper の Path64 に変換
+    // 各 subpath を Clipper の Path64 に変換
     const paths = new Paths64();
     rawShapes.forEach(shape => {
         const path64 = threeShapeToPath64(shape, 12);
@@ -243,25 +250,22 @@ function commandsToShapes(commands) {
 
     if (paths.length === 0) return [];
 
-    // ③ Clipper Union で自己交差を解消（NonZero ルール）
+    // Clipper Union で自己交差を解消 (NonZero ルール)
     let unified;
     try {
         unified = Clipper.Union(paths, undefined, FillRule.NonZero);
     } catch (e) {
         console.warn('Clipper Union failed, falling back to raw shapes:', e);
-        // フォールバック: Union 失敗時は従来通りの処理
         return rawShapesFallback(commands);
     }
 
     if (!unified || unified.length === 0) return [];
 
-    // ④ Union 結果を THREE.Shape[] に変換して返す
     return paths64ToThreeShapes(unified);
 }
 
-/**
- * Clipper が失敗した場合の従来フォールバック処理
- */
+// Clipper Union が失敗した場合のフォールバック。面積の符号でホールを判別し
+// THREE.Shape[] を返す (Union なしなので自己交差パスは残ることがある)。
 function rawShapesFallback(commands) {
     const shapes = [];
     let currentShape = new THREE.Shape();
@@ -298,8 +302,6 @@ function rawShapesFallback(commands) {
     });
     return finalSolids;
 }
-
-
 
 function loadFont(key) {
     const url = FONT_URLS[key];
@@ -531,7 +533,7 @@ function generateRing() {
     let geometry;
 
     if (segs === 32) {
-        // 中空円柱: 外円 - 内円 の Shape を押し出して X 軸で 90° 回転
+        // 真円: アニュラス(外円-内円)の Shape を押し出して X軸で 90° 回転させた中空円柱
         const outerR = state.ringSize + state.ringTube;
         const innerR = Math.max(0.1, state.ringSize - state.ringTube);
         const cylHeight = state.ringTube * 2;
@@ -547,57 +549,57 @@ function generateRing() {
             bevelEnabled: false,
             curveSegments: 32
         });
-        geometry.translate(0, 0, -cylHeight / 2); // 中心を原点に
+        geometry.translate(0, 0, -cylHeight / 2); // Z方向の中心を原点に揃える
+        geometry.rotateX(Math.PI / 2);             // リングを直立させる
     } else {
+        // その他の形状: トーラス
         geometry = new THREE.TorusGeometry(state.ringSize, state.ringTube, 16, segs);
     }
 
     const mesh = new THREE.Mesh(geometry, materialRing);
-    
     const ringZ = state.baseEnabled ? (state.baseThickness / 2) : (state.modelThickness / 2);
     mesh.position.set(state.ringX, state.ringY, ringZ);
-    
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
     let baseRotation = (state.ringRot * Math.PI) / 180;
-    if (segs === 3) baseRotation += (Math.PI / 6); 
+    if (segs === 3) baseRotation += (Math.PI / 6); // 正三角形を頂点が上になるよう補正
     mesh.rotation.z = baseRotation;
     groupRing.add(mesh);
 }
 
-/**
- * 中空円柱リングとベース板を繋ぐ補強板を生成する
- * 形状: 円の外周下弧 + ベース板上辺(の円の投影線分) を閉じた2D Shape を押し出す
- */
+// 中空円柱リングとベース板を繋ぐ補強板を生成する。
+// 形状: リング外周の下弧と、ベース板上辺(円の投影線分)を結んだ2D Shape を押し出す。
+// ケースA: ベース上辺が外周円と交わる場合 -> 弓形の断面
+// ケースB: ベース上辺が円の下にある場合   -> U字をつぶしたような断面
 function generateRingReinforcement(baseTopY) {
     const outerR = state.ringSize + state.ringTube;
     const cylHeight = state.ringTube * 2;
     const ringZ = state.baseEnabled ? (state.baseThickness / 2) : (state.modelThickness / 2);
 
-    // リング中心を原点とした相対Y
+    // リング中心を原点とした相対 Y 座標 (負値になるはず)
     const localBaseY = baseTopY - state.ringY;
-    if (localBaseY >= 0) return; // ベースがリング中心以上なら不要
+    if (localBaseY >= 0) return; // ベースがリング中心以上の位置なら補強不要
 
     const shape = new THREE.Shape();
 
     if (localBaseY > -outerR) {
-        // ケースA: ベース上辺が円の外周と交わる
+        // ケースA: ベース上辺が外周円と交差する
         const hw = Math.sqrt(outerR * outerR - localBaseY * localBaseY);
-        const theta1 = Math.atan2(localBaseY, -hw);         // 左交点の角度
-        let theta2   = Math.atan2(localBaseY,  hw);          // 右交点の角度
-        if (theta2 < 0) theta2 += 2 * Math.PI;              // [0, 2π] に正規化
+        const theta1 = Math.atan2(localBaseY, -hw);        // 左交点の角度
+        let theta2   = Math.atan2(localBaseY,  hw);         // 右交点の角度
+        if (theta2 < 0) theta2 += 2 * Math.PI;             // [0, 2pi] に正規化
 
-        shape.moveTo(hw, localBaseY);                        // B: 右交点
-        shape.lineTo(-hw, localBaseY);                       // ベース線（右→左）
-        shape.absarc(0, 0, outerR, theta1, theta2, false);  // CCW弧: 左→右 (下を経由)
+        shape.moveTo(hw, localBaseY);                       // 右交点から開始
+        shape.lineTo(-hw, localBaseY);                      // ベース上辺の線分 (右->左)
+        shape.absarc(0, 0, outerR, theta1, theta2, false); // CCW弧: 左->右 (下側を経由)
     } else {
-        // ケースB: ベース上辺が円全体の下にある
-        shape.moveTo( outerR, localBaseY);                   // 右下
-        shape.lineTo(-outerR, localBaseY);                   // 左下（ベース線）
-        shape.lineTo(-outerR, 0);                            // 左壁を上へ
-        shape.absarc(0, 0, outerR, Math.PI, 2 * Math.PI, false); // CCW弧: 左→底→右
-        // (outerR, 0) → (outerR, localBaseY) は自動クローズ
+        // ケースB: ベース上辺が円全体より下にある
+        shape.moveTo( outerR, localBaseY);                  // 右下
+        shape.lineTo(-outerR, localBaseY);                  // ベース上辺の線分 (右->左)
+        shape.lineTo(-outerR, 0);                           // 左壁を上へ
+        shape.absarc(0, 0, outerR, Math.PI, 2 * Math.PI, false); // CCW弧: 左->底->右
+        // 右端 (outerR, 0) から (outerR, localBaseY) は closePath で自動補完
     }
 
     const geometry = new THREE.ExtrudeGeometry(shape, {
@@ -776,7 +778,7 @@ if (ringAutoYCheck) {
     });
 }
 
-// Ring sliders with bidirectional number inputs
+// リングスライダー: range と number 入力を双方向でバインドする
 ['ring-x', 'ring-y', 'ring-size', 'ring-tube', 'ring-rot'].forEach(id => {
     const slider = document.getElementById(id);
     const numInput = document.getElementById('val-' + id);
@@ -804,7 +806,7 @@ if (ringAutoYCheck) {
     }
 });
 
-// ring-shape (select, no number input)
+// リング形状セレクト。真円(32)選択時のみ補強板チェックボックスを表示する。
 function updateReinforceVisibility() {
     const ctrl = document.getElementById('ctrl-ring-reinforce');
     if (ctrl) ctrl.style.display = parseInt(state.ringShape) === 32 ? 'flex' : 'none';
@@ -832,18 +834,17 @@ if (exportBtn) {
         exportBtn.disabled = true;
         exportBtn.textContent = 'Processing...';
 
-        // 少し遅延させてUIを更新させてから処理
+        // UI 更新を描画サイクルに乗せてからエクスポート処理を開始する
         setTimeout(() => {
             try {
                 const exporter = new STLExporter();
 
-                // ── Layer 2: 全メッシュをワールド座標でマージ → mergeVertices で頂点統合 ──
+                // 全メッシュをワールド座標でマージしてから mergeVertices で頂点統合する
                 rootGroup.updateMatrixWorld(true);
 
                 const geometries = [];
                 rootGroup.traverse(obj => {
                     if (!obj.isMesh || !obj.geometry) return;
-                    // ジオメトリをクローンしてワールド変換を適用
                     const geo = obj.geometry.clone();
                     geo.applyMatrix4(obj.matrixWorld);
                     geometries.push(geo);
@@ -851,23 +852,19 @@ if (exportBtn) {
 
                 let exportTarget;
                 if (geometries.length > 0) {
-                    // 全ジオメトリを1つに統合
                     const merged = mergeGeometries(geometries, false);
                     geometries.forEach(g => g.dispose());
 
                     if (merged) {
-                        // 重複頂点・T字交差を除去（tolerance: 0.1μm）
+                        // 重複頂点を除去してウォータータイトなメッシュを確保 (tolerance: 0.1 μm)
                         const cleaned = mergeVertices(merged, 1e-4);
                         merged.dispose();
                         cleaned.computeVertexNormals();
-
-                        // 一時メッシュ（マテリアルなし）に入れてエクスポート
-                        const tempMesh = new THREE.Mesh(cleaned);
-                        exportTarget = tempMesh;
+                        exportTarget = new THREE.Mesh(cleaned);
                     }
                 }
 
-                // フォールバック: 統合失敗時はそのまま
+                // 統合に失敗した場合は rootGroup をそのままエクスポート
                 if (!exportTarget) exportTarget = rootGroup;
 
                 const result = exporter.parse(exportTarget, { binary: true });
@@ -918,7 +915,7 @@ function animate() {
     updateGizmo();
 }
 
-// ─── Navigation Gizmo ───────────────────────────────────────────────────────
+// ナビゲーションギズモ (右上固定の別レンダラー描画ウィジェット)
 const GIZMO_SIZE = 120;
 const gizmoCanvas = document.getElementById('gizmo-canvas');
 const gizmoContainer = document.getElementById('gizmo-container');
@@ -932,12 +929,12 @@ const gizmoCamera = new THREE.OrthographicCamera(-1.7, 1.7, 1.7, -1.7, 0.1, 20);
 gizmoCamera.position.set(0, 0, 8);
 gizmoCamera.lookAt(0, 0, 0);
 
-// 3つの環（半透明）
+// 3色の環を生成する (X=赤 YZ平面, Y=緑 XZ平面, Z=青 XY平面)
 (function buildRings() {
     const rings = [
-        { color: 0xff3b3b, rx: 0, ry: Math.PI / 2, rz: 0 },   // X軸: YZ平面
-        { color: 0x3bdd5a, rx: Math.PI / 2, ry: 0, rz: 0 },    // Y軸: XZ平面
-        { color: 0x4b9eff, rx: 0, ry: 0, rz: 0 },               // Z軸: XY平面
+        { color: 0xff3b3b, rx: 0, ry: Math.PI / 2, rz: 0 },
+        { color: 0x3bdd5a, rx: Math.PI / 2, ry: 0, rz: 0 },
+        { color: 0x4b9eff, rx: 0, ry: 0, rz: 0 },
     ];
     rings.forEach(r => {
         const geo = new THREE.TorusGeometry(1, 0.04, 16, 80);
@@ -948,7 +945,7 @@ gizmoCamera.lookAt(0, 0, 0);
     });
 })();
 
-// 6軸ラベルの定義（方向ベクトル + カメラスナップ先）
+// 6軸ラベル定義 (方向ベクトルとカメラスナップ先 up を持つ)
 const GIZMO_AXES = [
     { id: 'gx+', txt: 'X',  pos3: new THREE.Vector3(1.3, 0, 0),    color: '#ff4444', dir: new THREE.Vector3(1, 0, 0),  up: new THREE.Vector3(0, 0, 1) },
     { id: 'gy+', txt: 'Y',  pos3: new THREE.Vector3(0, 1.3, 0),    color: '#3bdd5a', dir: new THREE.Vector3(0, 1, 0),  up: new THREE.Vector3(0, 0, 1) },
@@ -958,7 +955,7 @@ const GIZMO_AXES = [
     { id: 'gz-', txt: '-Z', pos3: new THREE.Vector3(0, 0, -1.3),   color: '#2255aa', dir: new THREE.Vector3(0, 0, -1), up: new THREE.Vector3(0, 1, 0) },
 ];
 
-// DivラベルをDOMに追加
+// Div ラベルを DOM に追加し、クリック時にカメラアニメーションを起動する
 const labelEls = {};
 GIZMO_AXES.forEach(ax => {
     const el = document.createElement('div');
@@ -971,7 +968,7 @@ GIZMO_AXES.forEach(ax => {
     labelEls[ax.id] = el;
 });
 
-// ─── カメラアニメーション ──────────────────────────────────────────────────
+// カメラアニメーション (smooth step で ease in-out)
 let camAnim = null;
 const CAM_ANIM_MS = 550;
 
@@ -992,8 +989,7 @@ function updateCameraAnimation() {
     const now = performance.now();
     if (!camAnim.t0) camAnim.t0 = now;
     let t = Math.min((now - camAnim.t0) / CAM_ANIM_MS, 1);
-    // smooth step (ease in-out)
-    t = t * t * (3 - 2 * t);
+    t = t * t * (3 - 2 * t); // smooth step (ease in-out)
 
     camera.position.lerpVectors(camAnim.fromPos, camAnim.toPos, t);
     camera.up.lerpVectors(camAnim.fromUp, camAnim.toUp, t).normalize();
@@ -1001,16 +997,17 @@ function updateCameraAnimation() {
     if (t >= 1) camAnim = null;
 }
 
-// ─── ギズモ描画 ───────────────────────────────────────────────────────────
+// ギズモ描画: 毎フレーム呼び出してカメラ同期とラベル位置更新を行う
 const _gv = new THREE.Vector3();
 function updateGizmo() {
-    // メインカメラの向きをギズモカメラに反映
+    // メインカメラと同じ向きをギズモカメラに反映する
     const dir = camera.position.clone().sub(controls.target).normalize();
     gizmoCamera.position.copy(dir.multiplyScalar(8));
     gizmoCamera.up.copy(camera.up);
     gizmoCamera.lookAt(0, 0, 0);
 
-    // ラベル位置を2Dに投影して更新
+    // 各ラベルを 3D -> 2D に投影して DOM 位置を更新する。
+    // カメラ側を向いていない (奥面の) ラベルは薄く表示する。
     GIZMO_AXES.forEach(ax => {
         _gv.copy(ax.pos3).project(gizmoCamera);
         const x = (_gv.x + 1) / 2 * GIZMO_SIZE;
@@ -1018,7 +1015,6 @@ function updateGizmo() {
         const el = labelEls[ax.id];
         el.style.left = x + 'px';
         el.style.top  = y + 'px';
-        // 奥面は薄く
         const dot = ax.pos3.clone().normalize().dot(dir);
         el.style.opacity = dot >= 0 ? '1' : '0.28';
     });
@@ -1026,9 +1022,10 @@ function updateGizmo() {
     gizmoRenderer.render(gizmoScene, gizmoCamera);
 }
 
-// ─── UI 初期化（state → DOM、ここが唯一の初期値設定箇所） ──────────────────
+// UI 初期化: state -> DOM への一方向同期。
+// 初期値は state オブジェクトのみで管理し、HTML 側には value/checked 属性を書かない。
 function initUIFromState() {
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const set   = (id, val) => { const el = document.getElementById(id); if (el) el.value   = val; };
     const check = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
     const enable = (id, on) => {
         const el = document.getElementById(id);
