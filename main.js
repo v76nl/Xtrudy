@@ -27,7 +27,7 @@ const state = {
     baseEnabled: true, 
     basePadding: 2,
     baseThickness: 2,
-    baseRadius: 1,
+    baseRadius: 5,
     
     ringEnabled: true,
     ringShape: 32,
