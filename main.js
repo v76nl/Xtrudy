@@ -18,7 +18,7 @@ const FONT_URLS = {
 const state = {
     // 入力ソース
     mode: 'text',       // 'text' | 'svg'
-    text: '印刷物',
+    text: '電気工学研究部',
     fontKey: 'sans',
     textSize: 10,
     textSpacing: -1,
@@ -36,13 +36,13 @@ const state = {
     // ストラップリング
     ringEnabled: true,
     ringShape: 32,      // セグメント数。32=真円(中空円柱)、その他=トーラス
-    ringAutoY: true,
+    ringAutoY: false,
     ringX: 0,
-    ringY: 0,
+    ringY: 11,
     ringSize: 3,
     ringTube: 1,
     ringRot: 0,
-    ringReinforce: false
+    ringReinforce: true
 };
 
 let currentFont = null;
