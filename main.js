@@ -160,22 +160,23 @@ function flipYCorrectly(geometry, scaleX = 1, scaleY = -1, scaleZ = 1) {
 // clipper2-js は整数座標で動作するため、浮動小数点座標を整数にスケールして渡す
 const CLIPPER_SCALE = 1e6;
 
-// THREE.Shape の点列を Clipper 用の整数座標 Path64 に変換する
-function threeShapeToPath64(shape, curveSegments = 12) {
+// THREE.Shape の点列を Clipper 用の整数座標 Path64 に変換する。
+// offsetX / offsetY を指定すると座標をシフトしてから変換する（文字カーソル位置の適用に使用）。
+function threeShapeToPath64(shape, curveSegments = 12, offsetX = 0, offsetY = 0) {
     const pts = shape.getPoints(curveSegments);
-    const path = pts.map(p => ({
-        x: Math.round(p.x * CLIPPER_SCALE),
-        y: Math.round(p.y * CLIPPER_SCALE)
+    return pts.map(p => ({
+        x: Math.round((p.x + offsetX) * CLIPPER_SCALE),
+        y: Math.round((p.y + offsetY) * CLIPPER_SCALE)
     }));
-    return path;
 }
 
 // Clipper の Paths64 結果を THREE.Shape[] に変換する。
 // NonZero Union 後のリングを面積の符号でソリッド/ホールに振り分ける。
+// 複数文字を一括 Union した場合の複数ソリッド・複数ホールにも対応するため、
+// 各ホールをその bbox 重心を内包する最小のソリッドに割り当てる。
 function paths64ToThreeShapes(paths64) {
     if (!paths64 || paths64.length === 0) return [];
 
-    // 各パスを THREE.Shape に変換し面積を計算
     const shapeItems = paths64.map(path => {
         if (path.length < 3) return null;
         const pts = path.map(p => new THREE.Vector2(
@@ -184,29 +185,60 @@ function paths64ToThreeShapes(paths64) {
         ));
         const s = new THREE.Shape(pts);
         const area = THREE.ShapeUtils.area(pts);
-        return { shape: s, area, pts };
+        // bbox を計算してホール割り当てに使用する
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        pts.forEach(p => {
+            if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        });
+        return { shape: s, area, absArea: Math.abs(area), pts, minX, maxX, minY, maxY };
     }).filter(Boolean);
 
     if (shapeItems.length === 0) return [];
 
-    // 面積の絶対値でソート（大きいものが外形）
-    shapeItems.sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
+    shapeItems.sort((a, b) => b.absArea - a.absArea);
 
     const primarySign = Math.sign(shapeItems[0].area);
-    const solids = [];
+    const solids = shapeItems.filter(item => Math.sign(item.area) === primarySign);
+    const holes  = shapeItems.filter(item => Math.sign(item.area) !== primarySign);
 
-    shapeItems.forEach(item => {
-        if (Math.sign(item.area) === primarySign) {
-            solids.push(item.shape);
-        } else {
-            // 符号が逆 → ホール。面積最大のソリッドに追加
-            if (solids.length > 0) {
-                solids[0].holes.push(item.shape);
+    // 各ホールを、その bbox 重心を含む最小面積のソリッドに割り当てる。
+    // Clipper Union の結果は各ホールが必ず 1 つのソリッド内に収まるため bbox で十分。
+    holes.forEach(hole => {
+        const cx = (hole.minX + hole.maxX) / 2;
+        const cy = (hole.minY + hole.maxY) / 2;
+        let best = null;
+        solids.forEach(solid => {
+            if (cx >= solid.minX && cx <= solid.maxX && cy >= solid.minY && cy <= solid.maxY) {
+                if (!best || solid.absArea < best.absArea) best = solid;
             }
-        }
+        });
+        (best ?? solids[0]).shape.holes.push(hole.shape);
     });
 
-    return solids;
+    return solids.map(item => item.shape);
+}
+
+// opentype のコマンド列を THREE.Shape の配列として返す（Clipper Union なし）。
+// 複数文字を一括 Union するために commandsToShapes から分離したヘルパー。
+function parseCommandsToRawShapes(commands) {
+    const shapes = [];
+    let currentShape = new THREE.Shape();
+    commands.forEach(cmd => {
+        switch(cmd.type) {
+            case 'M':
+                if (currentShape.curves.length > 0) shapes.push(currentShape);
+                currentShape = new THREE.Shape();
+                currentShape.moveTo(cmd.x, cmd.y);
+                break;
+            case 'L': currentShape.lineTo(cmd.x, cmd.y); break;
+            case 'Q': currentShape.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y); break;
+            case 'C': currentShape.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y); break;
+            case 'Z': currentShape.closePath(); break;
+        }
+    });
+    if (currentShape.curves.length > 0) shapes.push(currentShape);
+    return shapes;
 }
 
 // opentype のコマンド列を clipper2-js で Boolean Union し、自己交差のないクリーンな
@@ -325,13 +357,13 @@ function _generate() {
     let mainBox = new THREE.Box3();
 
     if (state.mode === 'text' && currentFont) {
-        generateTextRobust(mainBox);
+        // generateTextAndBase の中で土台も一括生成するため、外側の generateBase は呼ばない
+        generateTextAndBase(mainBox);
     } else if (state.mode === 'svg' && state.svgContent) {
         generateSVG(mainBox);
-    }
-
-    if (state.baseEnabled && !mainBox.isEmpty()) {
-        generateBase(mainBox);
+        if (state.baseEnabled && !mainBox.isEmpty()) {
+            generateBase(mainBox); // SVG モードは引き続き従来の土台生成
+        }
     }
 
     if (state.baseEnabled) {
@@ -416,58 +448,158 @@ function clearGroup(group) {
     }
 }
 
-function generateTextRobust(targetBox) {
+// Clipper Paths64 の全頂点に整数シフトを適用した新しい Paths64 を返す。
+function shiftPaths64(paths, dx, dy) {
+    const result = new Paths64();
+    paths.forEach(path => {
+        result.push(path.map(pt => ({ x: pt.x + Math.round(dx), y: pt.y + Math.round(dy) })));
+    });
+    return result;
+}
+
+// 中央対称の角丸矩形 Path64 を Clipper 座標系（フォント Y-up 空間）で生成する。
+function createRoundedRectPaths64(halfW, halfH, radius) {
+    const r = Math.min(radius, halfW, halfH);
+    const shape = new THREE.Shape();
+    shape.moveTo(-halfW + r, -halfH);
+    shape.lineTo( halfW - r, -halfH);
+    shape.quadraticCurveTo( halfW, -halfH,  halfW, -halfH + r);
+    shape.lineTo( halfW,  halfH - r);
+    shape.quadraticCurveTo( halfW,  halfH,  halfW - r,  halfH);
+    shape.lineTo(-halfW + r,  halfH);
+    shape.quadraticCurveTo(-halfW,  halfH, -halfW,  halfH - r);
+    shape.lineTo(-halfW, -halfH + r);
+    shape.quadraticCurveTo(-halfW, -halfH, -halfW + r, -halfH);
+    const paths = new Paths64();
+    const p64 = threeShapeToPath64(shape, 16);
+    if (p64.length >= 3) paths.push(p64);
+    return paths;
+}
+
+// テキストモード用: 文字と土台を一括生成する。
+//
+// これまでの問題:
+//   文字 (z=0〜modelThickness) と土台 (z=-baseThickness〜0) が z=0 で"面を共有"する
+//   → 面共有のエッジは必ず Non-manifold になる
+//
+// 解決策: Clipper2 Difference で 2D 段階で完全に分離する
+//   「文字柱」: XY=文字輪郭, z=-baseThickness 〜 modelThickness （土台ごと貫通）
+//   「土台リング」: XY=(土台輪郭 - 文字輪郭), z=-baseThickness 〜 0
+//   → 2 つのソリッドは共有面を持たず、境界エッジでのみ接続 → Manifold
+function generateTextAndBase(targetBox) {
     if (!state.text) return;
-    let cursorX = 0;
     const size = state.textSize;
     const spacing = state.textSpacing;
     const chars = Array.from(state.text);
-    
+
+    // 1. 全文字のサブパスを X オフセット付きで Clipper Path64 に変換して収集
+    const allRawPaths = new Paths64();
+    let cursorX = 0;
+
     chars.forEach((char) => {
-        const path = currentFont.getPath(char, 0, 0, size);
-        const shapes = commandsToShapes(path.commands);
-
-        if (shapes.length > 0) {
-            const geometry = new THREE.ExtrudeGeometry(shapes, {
-                depth: state.modelThickness,
-                bevelEnabled: false
-            });
-            
-            flipYCorrectly(geometry);
-            geometry.computeBoundingBox();
-
-            const advanceWidth = currentFont.getAdvanceWidth(char, size);
-            const mesh = new THREE.Mesh(geometry, materialMain);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            
-            mesh.position.x = cursorX;
-            mesh.position.z = 0;
-            groupMain.add(mesh);
-            cursorX += advanceWidth + spacing;
-        } else {
-             const advanceWidth = currentFont.getAdvanceWidth(char, size);
-             cursorX += advanceWidth + spacing;
-        }
+        const fontPath = currentFont.getPath(char, 0, 0, size);
+        parseCommandsToRawShapes(fontPath.commands).forEach(shape => {
+            const p64 = threeShapeToPath64(shape, 12, cursorX, 0);
+            if (p64.length >= 3) allRawPaths.push(p64);
+        });
+        cursorX += currentFont.getAdvanceWidth(char, size) + spacing;
     });
 
-    if (groupMain.children.length > 0) {
-        const groupBox = new THREE.Box3();
-        groupMain.children.forEach(mesh => {
-            mesh.geometry.computeBoundingBox();
-            const geomBox = mesh.geometry.boundingBox.clone();
-            geomBox.translate(mesh.position);
-            groupBox.union(geomBox);
-        });
+    if (allRawPaths.length === 0) return;
 
-        const midX = (groupBox.max.x + groupBox.min.x) / 2;
-        const midY = (groupBox.max.y + groupBox.min.y) / 2;
+    // 2. 全文字を一括 Union
+    let unified;
+    try {
+        unified = Clipper.Union(allRawPaths, undefined, FillRule.NonZero);
+    } catch (e) {
+        console.warn('Clipper Union failed:', e);
+        return;
+    }
+    if (!unified || unified.length === 0) return;
 
-        groupMain.children.forEach(c => {
-            c.position.x -= midX;
-            c.position.y -= midY;
+    // 3. Clipper 空間で bbox を計算して中心を求める
+    let clipMinX = Infinity, clipMaxX = -Infinity, clipMinY = Infinity, clipMaxY = -Infinity;
+    unified.forEach(path => path.forEach(pt => {
+        if (pt.x < clipMinX) clipMinX = pt.x; if (pt.x > clipMaxX) clipMaxX = pt.x;
+        if (pt.y < clipMinY) clipMinY = pt.y; if (pt.y > clipMaxY) clipMaxY = pt.y;
+    }));
+    const fontMidX = Math.round((clipMinX + clipMaxX) / 2);
+    const fontMidY = Math.round((clipMinY + clipMaxY) / 2);
+
+    // 4. 中心対称にシフトした文字パスを作成
+    const centeredTextPaths = shiftPaths64(unified, -fontMidX, -fontMidY);
+
+    // 5. 文字シェイプを THREE.Shape[] に変換して押し出す
+    const textShapes = paths64ToThreeShapes(centeredTextPaths);
+    if (textShapes.length === 0) return;
+
+    if (state.baseEnabled) {
+        // 6a. 「文字柱」: 土台厚みを含めて下から全部押し出す。
+        //     z=-baseThickness 〜 modelThickness。土台との共有面が一切生まれない。
+        const textDepth = state.baseThickness + state.modelThickness;
+        const textGeom = new THREE.ExtrudeGeometry(textShapes, {
+            depth: textDepth,
+            bevelEnabled: false
         });
-        
+        flipYCorrectly(textGeom);
+        textGeom.translate(0, 0, -state.baseThickness);
+
+        const textMesh = new THREE.Mesh(textGeom, materialMain);
+        textMesh.castShadow = true;
+        textMesh.receiveShadow = true;
+        groupMain.add(textMesh);
+
+        // 6b. 「土台リング」: Clipper Difference で (土台輪郭 - 文字輪郭)。
+        //     z=-baseThickness 〜 0 のみ押し出す。文字柱との共有面なし。
+        const textW = (clipMaxX - clipMinX) / CLIPPER_SCALE;
+        const textH = (clipMaxY - clipMinY) / CLIPPER_SCALE;
+        const halfW = textW / 2 + state.basePadding;
+        const halfH = textH / 2 + state.basePadding;
+        const r = Math.min(state.baseRadius, halfW, halfH);
+
+        const baseOutlinePaths = createRoundedRectPaths64(halfW, halfH, r);
+
+        let baseRingPaths;
+        try {
+            baseRingPaths = Clipper.Difference(baseOutlinePaths, centeredTextPaths, FillRule.NonZero);
+        } catch (e) {
+            console.warn('Clipper Difference failed, falling back to plain base:', e);
+            baseRingPaths = baseOutlinePaths;
+        }
+
+        if (baseRingPaths && baseRingPaths.length > 0) {
+            const baseRingShapes = paths64ToThreeShapes(baseRingPaths);
+            if (baseRingShapes.length > 0) {
+                const baseGeom = new THREE.ExtrudeGeometry(baseRingShapes, {
+                    depth: state.baseThickness,
+                    bevelEnabled: false
+                });
+                flipYCorrectly(baseGeom);
+                baseGeom.translate(0, 0, -state.baseThickness);
+
+                const baseMesh = new THREE.Mesh(baseGeom, materialBase);
+                baseMesh.castShadow = true;
+                baseMesh.receiveShadow = true;
+                groupBase.add(baseMesh);
+            }
+        }
+
+        // targetBox: XY = テキスト視覚範囲のみ（リング自動配置の基準に使用）
+        // ※ 土台のバウンディングボックスは含めない（_generate() で basePadding を加算するため二重加算になる）
+        targetBox.setFromObject(groupMain);
+    } else {
+        // 6c. 土台なし: 文字のみ（従来通り）
+        const textGeom = new THREE.ExtrudeGeometry(textShapes, {
+            depth: state.modelThickness,
+            bevelEnabled: false
+        });
+        flipYCorrectly(textGeom);
+
+        const textMesh = new THREE.Mesh(textGeom, materialMain);
+        textMesh.castShadow = true;
+        textMesh.receiveShadow = true;
+        groupMain.add(textMesh);
+
         targetBox.setFromObject(groupMain);
     }
 }
@@ -522,7 +654,9 @@ function generateBase(targetBox) {
     });
 
     const mesh = new THREE.Mesh(geometry, materialBase);
-    mesh.position.z = 0; 
+    // B案: 土台を z=-baseThickness〜0 に配置することで文字（z=0〜modelThickness）と
+    // Z 方向の重複を解消し、内部面（non-manifold の原因）をなくす。背面はフラットに保たれる。
+    mesh.position.z = -state.baseThickness;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     groupBase.add(mesh);
@@ -556,7 +690,8 @@ function generateRing() {
     }
 
     const mesh = new THREE.Mesh(geometry, materialRing);
-    const ringZ = state.baseEnabled ? (state.baseThickness / 2) : (state.modelThickness / 2);
+    // B案配置: 土台は z=-baseThickness〜0 なので中心は -baseThickness/2
+    const ringZ = state.baseEnabled ? (-state.baseThickness / 2) : (state.modelThickness / 2);
     mesh.position.set(state.ringX, state.ringY, ringZ);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -574,7 +709,8 @@ function generateRing() {
 function generateRingReinforcement(baseTopY) {
     const outerR = state.ringSize + state.ringTube;
     const cylHeight = state.ringTube * 2;
-    const ringZ = state.baseEnabled ? (state.baseThickness / 2) : (state.modelThickness / 2);
+    // B案配置: 土台は z=-baseThickness〜0 なので中心は -baseThickness/2
+    const ringZ = state.baseEnabled ? (-state.baseThickness / 2) : (state.modelThickness / 2);
 
     // リング中心を原点とした相対 Y 座標 (負値になるはず)
     const localBaseY = baseTopY - state.ringY;
