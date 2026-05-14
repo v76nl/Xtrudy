@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
-import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+// mergeGeometries / mergeVertices は使用しない（重複側壁による Non-manifold を防ぐため廃止）
 import { Clipper, Paths64, FillRule } from 'clipper2-js';
 
 // フォントキー -> CDN上の woff ファイル URL
@@ -534,15 +534,15 @@ function generateTextAndBase(targetBox) {
     if (textShapes.length === 0) return;
 
     if (state.baseEnabled) {
-        // 6a. 「文字柱」: 土台厚みを含めて下から全部押し出す。
-        //     z=-baseThickness 〜 modelThickness。土台との共有面が一切生まれない。
-        const textDepth = state.baseThickness + state.modelThickness;
+        // 6a. 「文字柱」: z=0 〜 +modelThickness のみ押し出す。
+        //     土台リング (z=-baseThickness〜0) とは Z レンジが分離しており、
+        //     共通の XY 境界でエッジのみ接続 → 重複側壁ゼロ → manifold。
         const textGeom = new THREE.ExtrudeGeometry(textShapes, {
-            depth: textDepth,
+            depth: state.modelThickness,
             bevelEnabled: false
         });
         flipYCorrectly(textGeom);
-        textGeom.translate(0, 0, -state.baseThickness);
+        // translate 不要: ExtrudeGeometry は z=0 から始まるので土台上面と一致する
 
         const textMesh = new THREE.Mesh(textGeom, materialMain);
         textMesh.castShadow = true;
@@ -974,33 +974,12 @@ if (exportBtn) {
             try {
                 const exporter = new STLExporter();
 
-                // 全メッシュをワールド座標でマージしてから mergeVertices で頂点統合する
+                // 各シェルを独立したまま rootGroup ごとエクスポートする。
+                // mergeGeometries で結合すると文字柱外壁と土台リング内壁が
+                // 同一位置・逆法線で重複し Non-manifold になるため廃止。
+                // ideamaker / PrusaSlicer は複数シェルの STL を Union 解釈するので問題なし。
                 rootGroup.updateMatrixWorld(true);
-
-                const geometries = [];
-                rootGroup.traverse(obj => {
-                    if (!obj.isMesh || !obj.geometry) return;
-                    const geo = obj.geometry.clone();
-                    geo.applyMatrix4(obj.matrixWorld);
-                    geometries.push(geo);
-                });
-
-                let exportTarget;
-                if (geometries.length > 0) {
-                    const merged = mergeGeometries(geometries, false);
-                    geometries.forEach(g => g.dispose());
-
-                    if (merged) {
-                        // 重複頂点を除去してウォータータイトなメッシュを確保 (tolerance: 0.1 μm)
-                        const cleaned = mergeVertices(merged, 1e-4);
-                        merged.dispose();
-                        cleaned.computeVertexNormals();
-                        exportTarget = new THREE.Mesh(cleaned);
-                    }
-                }
-
-                // 統合に失敗した場合は rootGroup をそのままエクスポート
-                if (!exportTarget) exportTarget = rootGroup;
+                const exportTarget = rootGroup;
 
                 const result = exporter.parse(exportTarget, { binary: true });
                 const blob = new Blob([result], { type: 'application/octet-stream' });
