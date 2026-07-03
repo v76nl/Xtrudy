@@ -1,0 +1,29 @@
+{
+  "name": "xtrudy",
+  "version": "1.0.0",
+  "description": "テキストや SVG 画像を 3D モデルに変換し、STL ファイルとして出力するブラウザベースのツールです。\r キーホルダーやハンコなど、小物の 3D プリント用データ作成を主な用途としています。",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/v76nl/Xtrudy/issues"
+  },
+  "homepage": "https://github.com/v76nl/Xtrudy#readme",
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
+  },
+  "dependencies": {
+    "@types/three": "^0.185.0",
+    "clipper2-js": "^1.2.4",
+    "opentype.js": "^2.0.0",
+    "three": "^0.185.1"
+  }
+}
