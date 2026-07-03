@@ -1,4 +1,30 @@
-export const state = {
+export interface StateType {
+    mode: 'text' | 'svg';
+    text: string;
+    fontKey: string;
+    textSize: number;
+    textSpacing: number;
+    modelThickness: number;
+    svgContent: string | null;
+    svgScale: number;
+    mirrorX: boolean;
+    baseEnabled: boolean;
+    basePadding: number;
+    baseThickness: number;
+    baseRadius: number;
+    ringEnabled: boolean;
+    ringShape: number;
+    ringAutoY: boolean;
+    ringX: number;
+    ringY: number;
+    ringSize: number;
+    ringTube: number;
+    ringRot: number;
+    ringReinforce: boolean;
+    [key: string]: any;
+}
+
+export const state: StateType = {
     mode: 'text',
     text: '電気工学研究部',
     fontKey: 'sans',
