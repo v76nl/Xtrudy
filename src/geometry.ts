@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+import { SVGLoader } from 'three/addons/loaders/SVGLoader';
 import { Clipper, Paths64, FillRule } from 'clipper2-js';
-import { state } from './state.js';
-import { groupMain, groupBase, groupRing, materialMain, materialBase, materialRing, rootGroup } from './scene.js';
-import { updateDimensionsInfo, showLoading } from './ui.js';
-import { flipYCorrectly, parseCommandsToRawShapes, threeShapeToPath64, shiftPaths64, paths64ToThreeShapes, createRoundedRectPaths64, CLIPPER_SCALE, commandsToShapes, rawShapesFallback } from './utils.js';
+import { state } from './state.ts';
+import { groupMain, groupBase, groupRing, materialMain, materialBase, materialRing, rootGroup } from './scene.ts';
+import { updateDimensionsInfo, showLoading } from './ui.ts';
+import { flipYCorrectly, parseCommandsToRawShapes, threeShapeToPath64, shiftPaths64, paths64ToThreeShapes, createRoundedRectPaths64, CLIPPER_SCALE, commandsToShapes, rawShapesFallback } from './utils.ts';
 
-// フォントキー -> CDN上の woff ファイル URL
+// フォントキー -> CDN上�E woff ファイル URL
 export const FONT_URLS = {
     'sans':  'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5/files/noto-sans-jp-japanese-700-normal.woff',
     'serif': 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-jp@5/files/noto-serif-jp-japanese-700-normal.woff',
@@ -36,12 +36,12 @@ export function _generate() {
     let mainBox = new THREE.Box3();
 
     if (state.mode === 'text' && currentFont) {
-        // generateTextAndBase の中で土台も一括生成するため、外側の generateBase は呼ばない
+        // generateTextAndBase の中で土台も一括生�Eするため、外�Eの generateBase は呼ばなぁE
         generateTextAndBase(mainBox);
     } else if (state.mode === 'svg' && state.svgContent) {
         generateSVG(mainBox);
         if (state.baseEnabled && !mainBox.isEmpty()) {
-            generateBase(mainBox); // SVG モードは引き続き従来の土台生成
+            generateBase(mainBox); // SVG モード�E引き続き従来の土台生�E
         }
     }
 
@@ -126,20 +126,20 @@ export function clearGroup(group) {
         group.remove(obj); 
     }
 }
-// テキストモード用: 文字と土台を一括生成する。
+// チE��ストモード用: 斁E��と土台を一括生�Eする、E
 //
-// 設計方針 (Embed アプローチ):
-//   文字柱: XY=文字輪郭, z=-EMBED 〜 +modelThickness  (EMBED=0.1mm 土台に食い込む)
-//   土台プレート: XY=土台輪郭(穴なしソリッド), z=-baseThickness 〜 0
-//   → 文字が土台に 0.1mm 埋め込まれることで coincident face を回避。
-//   → ideamaker の "Merge Internal Overlapping Parts" がボリューム重複を Union する。
+// 設計方釁E(Embed アプローチE:
+//   斁E��柱: XY=斁E��輪郭, z=-EMBED 、E+modelThickness  (EMBED=0.1mm 土台に食い込む)
+//   土台プレーチE XY=土台輪郭(穴なしソリチE��), z=-baseThickness 、E0
+//   ↁE斁E��が土台に 0.1mm 埋め込まれることで coincident face を回避、E
+//   ↁEideamaker の "Merge Internal Overlapping Parts" が�Eリューム重褁E�� Union する、E
 export function generateTextAndBase(targetBox) {
     if (!state.text) return;
     const size = state.textSize;
     const spacing = state.textSpacing;
     const chars = Array.from(state.text);
 
-    // 1. 全文字のサブパスを X オフセット付きで Clipper Path64 に変換して収集
+    // 1. 全斁E���EサブパスめEX オフセチE��付きで Clipper Path64 に変換して収集
     const allRawPaths = new Paths64();
     let cursorX = 0;
 
@@ -154,7 +154,7 @@ export function generateTextAndBase(targetBox) {
 
     if (allRawPaths.length === 0) return;
 
-    // 2. 全文字を一括 Union
+    // 2. 全斁E��を一括 Union
     let unified;
     try {
         unified = Clipper.Union(allRawPaths, undefined, FillRule.NonZero);
@@ -164,7 +164,7 @@ export function generateTextAndBase(targetBox) {
     }
     if (!unified || unified.length === 0) return;
 
-    // 3. Clipper 空間で bbox を計算して中心を求める
+    // 3. Clipper 空間で bbox を計算して中忁E��求めめE
     let clipMinX = Infinity, clipMaxX = -Infinity, clipMinY = Infinity, clipMaxY = -Infinity;
     unified.forEach(path => path.forEach(pt => {
         if (pt.x < clipMinX) clipMinX = pt.x; if (pt.x > clipMaxX) clipMaxX = pt.x;
@@ -173,32 +173,32 @@ export function generateTextAndBase(targetBox) {
     const fontMidX = Math.round((clipMinX + clipMaxX) / 2);
     const fontMidY = Math.round((clipMinY + clipMaxY) / 2);
 
-    // 4. 中心対称にシフトした文字パスを作成
+    // 4. 中忁E��称にシフトした斁E��パスを作�E
     const centeredTextPaths = shiftPaths64(unified, -fontMidX, -fontMidY);
 
-    // 5. 文字シェイプを THREE.Shape[] に変換して押し出す
+    // 5. 斁E��シェイプを THREE.Shape[] に変換して押し�EぁE
     const textShapes = paths64ToThreeShapes(centeredTextPaths);
     if (textShapes.length === 0) return;
 
     if (state.baseEnabled) {
-        // 6a. 「文字柱」: z=TINY_GAP 〜 +modelThickness。
-        //     土台上面 (z=0) と文字底面の coincident face を回避するため
-        //     1μm だけ上にオフセットする。層厚以下なので印刷に影響なし。
+        // 6a. 「文字柱、E z=TINY_GAP 、E+modelThickness、E
+        //     土台上面 (z=0) と斁E��底面の coincident face を回避するため
+        //     1μm だけ上にオフセチE��する。層厚以下なので印刷に影響なし、E
         const TINY_GAP = 0.001;
         const textGeom = new THREE.ExtrudeGeometry(textShapes, {
             depth: state.modelThickness,
             bevelEnabled: false
         });
         flipYCorrectly(textGeom);
-        textGeom.translate(0, 0, TINY_GAP); // 1μm 浮かせる
+        textGeom.translate(0, 0, TINY_GAP); // 1μm 浮かせめE
 
         const textMesh = new THREE.Mesh(textGeom, materialMain);
         textMesh.castShadow = true;
         textMesh.receiveShadow = true;
         groupMain.add(textMesh);
 
-        // 6b. 「土台プレート」: 穴なしソリッド。
-        //     文字との共有面はエクスポート時に CSG Union で自動解沈。
+        // 6b. 「土台プレート、E 穴なしソリチE��、E
+        //     斁E��との共有面はエクスポ�Eト時に CSG Union で自動解沈、E
         const textW = (clipMaxX - clipMinX) / CLIPPER_SCALE;
         const textH = (clipMaxY - clipMinY) / CLIPPER_SCALE;
         const halfW = textW / 2 + state.basePadding;
@@ -221,11 +221,11 @@ export function generateTextAndBase(targetBox) {
             groupBase.add(baseMesh);
         }
 
-        // targetBox: XY = テキスト視覚範囲のみ（リング自動配置の基準に使用）
-        // ※ 土台のバウンディングボックスは含めない（_generate() で basePadding を加算するため二重加算になる）
+        // targetBox: XY = チE��スト視覚篁E��のみ�E�リング自動�E置の基準に使用�E�E
+        // ※ 土台のバウンチE��ングボックスは含めなぁE��Egenerate() で basePadding を加算するため二重加算になる！E
         targetBox.setFromObject(groupMain);
     } else {
-        // 6c. 土台なし: 文字のみ（従来通り）
+        // 6c. 土台なぁE 斁E���Eみ�E�従来通り�E�E
         const textGeom = new THREE.ExtrudeGeometry(textShapes, {
             depth: state.modelThickness,
             bevelEnabled: false
@@ -291,8 +291,8 @@ export function generateBase(targetBox) {
     });
 
     const mesh = new THREE.Mesh(geometry, materialBase);
-    // B案: 土台を z=-baseThickness〜0 に配置することで文字（z=0〜modelThickness）と
-    // Z 方向の重複を解消し、内部面（non-manifold の原因）をなくす。背面はフラットに保たれる。
+    // B桁E 土台めEz=-baseThickness、E に配置することで斁E��！E=0〜modelThickness�E�と
+    // Z 方向�E重褁E��解消し、�E部面�E�Eon-manifold の原因�E�をなくす。背面はフラチE��に保たれる、E
     mesh.position.z = -state.baseThickness;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -304,7 +304,7 @@ export function generateRing() {
     let geometry;
 
     if (segs === 32) {
-        // 真円: アニュラス(外円-内円)の Shape を Z 方向に押し出した中空円柱
+        // 真�E: アニュラス(外�E-冁E�E)の Shape めEZ 方向に押し�Eした中空冁E��
         const outerR = state.ringSize + state.ringTube;
         const innerR = Math.max(0.1, state.ringSize - state.ringTube);
         const cylHeight = state.ringTube * 2;
@@ -320,58 +320,58 @@ export function generateRing() {
             bevelEnabled: false,
             curveSegments: 32
         });
-        geometry.translate(0, 0, -cylHeight / 2); // Z方向の中心を原点に揃える
+        geometry.translate(0, 0, -cylHeight / 2); // Z方向�E中忁E��原点に揁E��めE
     } else {
-        // その他の形状: トーラス
+        // そ�E他�E形状: ト�Eラス
         geometry = new THREE.TorusGeometry(state.ringSize, state.ringTube, 16, segs);
     }
 
     const mesh = new THREE.Mesh(geometry, materialRing);
-    // B案配置: 土台は z=-baseThickness〜0 なので中心は -baseThickness/2
+    // B案�E置: 土台は z=-baseThickness、E なので中忁E�E -baseThickness/2
     const ringZ = state.baseEnabled ? (-state.baseThickness / 2) : (state.modelThickness / 2);
     mesh.position.set(state.ringX, state.ringY, ringZ);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
     let baseRotation = (state.ringRot * Math.PI) / 180;
-    if (segs === 3) baseRotation += (Math.PI / 6); // 正三角形を頂点が上になるよう補正
+    if (segs === 3) baseRotation += (Math.PI / 6); // 正三角形を頂点が上になるよぁE��正
     mesh.rotation.z = baseRotation;
     groupRing.add(mesh);
 }
 
-// 中空円柱リングとベース板を繋ぐ補強板を生成する。
-// 形状: リング外周の下弧と、ベース板上辺(円の投影線分)を結んだ2D Shape を押し出す。
-// ケースA: ベース上辺が外周円と交わる場合 -> 弓形の断面
-// ケースB: ベース上辺が円の下にある場合   -> U字をつぶしたような断面
+// 中空冁E��リングとベ�Eス板を繋ぐ補強板を生成する、E
+// 形状: リング外周の下弧と、�Eース板上辺(冁E�E投影線�E)を結んだ2D Shape を押し�Eす、E
+// ケースA: ベ�Eス上辺が外周冁E��交わる場吁E-> 弓形の断面
+// ケースB: ベ�Eス上辺が�Eの下にある場吁E  -> U字をつぶしたような断面
 export function generateRingReinforcement(baseTopY) {
     const outerR = state.ringSize + state.ringTube;
     const cylHeight = state.ringTube * 2;
-    // B案配置: 土台は z=-baseThickness〜0 なので中心は -baseThickness/2
+    // B案�E置: 土台は z=-baseThickness、E なので中忁E�E -baseThickness/2
     const ringZ = state.baseEnabled ? (-state.baseThickness / 2) : (state.modelThickness / 2);
 
-    // リング中心を原点とした相対 Y 座標 (負値になるはず)
+    // リング中忁E��原点とした相対 Y 座樁E(負値になる�EぁE
     const localBaseY = baseTopY - state.ringY;
-    if (localBaseY >= 0) return; // ベースがリング中心以上の位置なら補強不要
+    if (localBaseY >= 0) return; // ベ�Eスがリング中忁E��上�E位置なら補強不要E
 
     const shape = new THREE.Shape();
 
     if (localBaseY > -outerR) {
-        // ケースA: ベース上辺が外周円と交差する
+        // ケースA: ベ�Eス上辺が外周冁E��交差する
         const hw = Math.sqrt(outerR * outerR - localBaseY * localBaseY);
         const theta1 = Math.atan2(localBaseY, -hw);        // 左交点の角度
         let theta2   = Math.atan2(localBaseY,  hw);         // 右交点の角度
         if (theta2 < 0) theta2 += 2 * Math.PI;             // [0, 2pi] に正規化
 
-        shape.moveTo(hw, localBaseY);                       // 右交点から開始
-        shape.lineTo(-hw, localBaseY);                      // ベース上辺の線分 (右->左)
-        shape.absarc(0, 0, outerR, theta1, theta2, false); // CCW弧: 左->右 (下側を経由)
+        shape.moveTo(hw, localBaseY);                       // 右交点から開姁E
+        shape.lineTo(-hw, localBaseY);                      // ベ�Eス上辺の線�E (右->左)
+        shape.absarc(0, 0, outerR, theta1, theta2, false); // CCW弧: 左->右 (下�Eを経由)
     } else {
-        // ケースB: ベース上辺が円全体より下にある
-        shape.moveTo( outerR, localBaseY);                  // 右下
-        shape.lineTo(-outerR, localBaseY);                  // ベース上辺の線分 (右->左)
+        // ケースB: ベ�Eス上辺が�E全体より下にある
+        shape.moveTo( outerR, localBaseY);                  // 右丁E
+        shape.lineTo(-outerR, localBaseY);                  // ベ�Eス上辺の線�E (右->左)
         shape.lineTo(-outerR, 0);                           // 左壁を上へ
-        shape.absarc(0, 0, outerR, Math.PI, 2 * Math.PI, false); // CCW弧: 左->底->右
-        // 右端 (outerR, 0) から (outerR, localBaseY) は closePath で自動補完
+        shape.absarc(0, 0, outerR, Math.PI, 2 * Math.PI, false); // CCW弧: 左->庁E>右
+        // 右端 (outerR, 0) から (outerR, localBaseY) は closePath で自動補宁E
     }
 
     const geometry = new THREE.ExtrudeGeometry(shape, {

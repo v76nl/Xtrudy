@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { STLExporter } from 'three/addons/exporters/STLExporter.js';
-import { state } from './state.js';
-import { loadFont, updateGeometry } from './geometry.js';
-import { rootGroup, camera, renderer, controls } from './scene.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter';
+import { state } from './state.ts';
+import { loadFont, updateGeometry } from './geometry.ts';
+import { rootGroup, camera, renderer, controls } from './scene.ts';
 
 export function updateDimensionsInfo() {
     rootGroup.updateMatrixWorld(true);
@@ -22,6 +22,11 @@ export function updateDimensionsInfo() {
 export function showLoading(show) {
     const loading = document.getElementById('loading');
     if (loading) loading.style.display = show ? 'block' : 'none';
+}
+
+export function updateReinforceVisibility() {
+    const ctrl = document.getElementById('ctrl-ring-reinforce');
+    if (ctrl) ctrl.style.display = parseInt(state.ringShape as any) === 32 ? 'flex' : 'none';
 }
 export function initEvents() {
 const btnText = document.getElementById('mode-text');
@@ -49,6 +54,7 @@ function setMode(m) {
 }
 if (btnText) btnText.onclick = () => setMode('text');
 if (btnSvg) btnSvg.onclick = () => setMode('svg');
+setMode(state.mode);
 
 const inputText = document.getElementById('input-text');
 if (inputText) {
@@ -166,7 +172,7 @@ if (ringAutoYCheck) {
     });
 }
 
-// リングスライダー: range と number 入力を双方向でバインドする
+// リングスライダー: range と number 入力を双方向でバインドすめE
 ['ring-x', 'ring-y', 'ring-size', 'ring-tube', 'ring-rot'].forEach(id => {
     const slider = document.getElementById(id);
     const numInput = document.getElementById('val-' + id);
@@ -194,11 +200,8 @@ if (ringAutoYCheck) {
     }
 });
 
-// リング形状セレクト。真円(32)選択時のみ補強板チェックボックスを表示する。
-function updateReinforceVisibility() {
-    const ctrl = document.getElementById('ctrl-ring-reinforce');
-    if (ctrl) ctrl.style.display = parseInt(state.ringShape) === 32 ? 'flex' : 'none';
-}
+// リング形状セレクト。真冁E32)選択時のみ補強板チェチE��ボックスを表示する、E
+
 const ringShapeEl = document.getElementById('ring-shape');
 if (ringShapeEl) {
     ringShapeEl.addEventListener('input', (e) => {
@@ -222,7 +225,7 @@ if (exportBtn) {
         exportBtn.disabled = true;
         exportBtn.textContent = 'Processing...';
 
-        // UI 更新を描画サイクルに乗せてからエクスポート処理を開始する
+        // UI 更新を描画サイクルに乗せてからエクスポ�Eト�E琁E��開始すめE
         setTimeout(() => {
             try {
                 const exporter = new STLExporter();
@@ -238,7 +241,7 @@ if (exportBtn) {
                 link.click();
             } catch (err) {
                 console.error('Export error:', err);
-                alert('エクスポートに失敗しました: ' + err.message);
+                alert('エクスポ�Eトに失敗しました: ' + err.message);
             } finally {
                 exportBtn.disabled = false;
                 exportBtn.textContent = 'Export STL';
@@ -270,8 +273,8 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 }
-// UI 初期化: state -> DOM への一方向同期。
-// 初期値は state オブジェクトのみで管理し、HTML 側には value/checked 属性を書かない。
+// UI 初期匁E state -> DOM への一方向同期、E
+// 初期値は state オブジェクト�Eみで管琁E��、HTML 側には value/checked 属性を書かなぁE��E
 export function initUIFromState() {
     const set   = (id, val) => { const el = document.getElementById(id); if (el) el.value   = val; };
     const check = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
@@ -288,7 +291,7 @@ export function initUIFromState() {
         el.style.pointerEvents = on ? 'auto' : 'none';
     };
 
-    // テキスト
+    // チE��スチE
     set('input-text', state.text);
     set('font-select', state.fontKey);
     set('text-size', state.textSize);
@@ -306,7 +309,7 @@ export function initUIFromState() {
     set('base-thickness', state.baseThickness);
     set('base-radius', state.baseRadius);
 
-    // ストラップリング
+    // ストラチE�Eリング
     check('ring-enable', state.ringEnabled);
     set('ring-shape', state.ringShape);
     check('ring-reinforce', state.ringReinforce);
@@ -317,7 +320,7 @@ export function initUIFromState() {
      ['ring-rot','val-ring-rot','ringRot']
     ].forEach(([sid, nid, prop]) => { set(sid, state[prop]); set(nid, state[prop]); });
 
-    // Auto Top Align 時は ring-y を無効化
+    // Auto Top Align 時�E ring-y を無効匁E
     enable('ring-y', !state.ringAutoY);
     enable('val-ring-y', !state.ringAutoY);
 
