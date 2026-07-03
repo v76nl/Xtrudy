@@ -6,6 +6,7 @@ import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 // mergeGeometries / mergeVertices は使用しない（重複側壁による Non-manifold を防ぐため廃止）
 import { Clipper, Paths64, FillRule } from 'clipper2-js';
 
+
 // フォントキー -> CDN上の woff ファイル URL
 const FONT_URLS = {
     'sans':  'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5/files/noto-sans-jp-japanese-700-normal.woff',
@@ -478,14 +479,11 @@ function createRoundedRectPaths64(halfW, halfH, radius) {
 
 // テキストモード用: 文字と土台を一括生成する。
 //
-// これまでの問題:
-//   文字 (z=0〜modelThickness) と土台 (z=-baseThickness〜0) が z=0 で"面を共有"する
-//   → 面共有のエッジは必ず Non-manifold になる
-//
-// 解決策: Clipper2 Difference で 2D 段階で完全に分離する
-//   「文字柱」: XY=文字輪郭, z=-baseThickness 〜 modelThickness （土台ごと貫通）
-//   「土台リング」: XY=(土台輪郭 - 文字輪郭), z=-baseThickness 〜 0
-//   → 2 つのソリッドは共有面を持たず、境界エッジでのみ接続 → Manifold
+// 設計方針 (Embed アプローチ):
+//   文字柱: XY=文字輪郭, z=-EMBED 〜 +modelThickness  (EMBED=0.1mm 土台に食い込む)
+//   土台プレート: XY=土台輪郭(穴なしソリッド), z=-baseThickness 〜 0
+//   → 文字が土台に 0.1mm 埋め込まれることで coincident face を回避。
+//   → ideamaker の "Merge Internal Overlapping Parts" がボリューム重複を Union する。
 function generateTextAndBase(targetBox) {
     if (!state.text) return;
     const size = state.textSize;
@@ -534,23 +532,24 @@ function generateTextAndBase(targetBox) {
     if (textShapes.length === 0) return;
 
     if (state.baseEnabled) {
-        // 6a. 「文字柱」: z=0 〜 +modelThickness のみ押し出す。
-        //     土台リング (z=-baseThickness〜0) とは Z レンジが分離しており、
-        //     共通の XY 境界でエッジのみ接続 → 重複側壁ゼロ → manifold。
+        // 6a. 「文字柱」: z=TINY_GAP 〜 +modelThickness。
+        //     土台上面 (z=0) と文字底面の coincident face を回避するため
+        //     1μm だけ上にオフセットする。層厚以下なので印刷に影響なし。
+        const TINY_GAP = 0.001;
         const textGeom = new THREE.ExtrudeGeometry(textShapes, {
             depth: state.modelThickness,
             bevelEnabled: false
         });
         flipYCorrectly(textGeom);
-        // translate 不要: ExtrudeGeometry は z=0 から始まるので土台上面と一致する
+        textGeom.translate(0, 0, TINY_GAP); // 1μm 浮かせる
 
         const textMesh = new THREE.Mesh(textGeom, materialMain);
         textMesh.castShadow = true;
         textMesh.receiveShadow = true;
         groupMain.add(textMesh);
 
-        // 6b. 「土台リング」: Clipper Difference で (土台輪郭 - 文字輪郭)。
-        //     z=-baseThickness 〜 0 のみ押し出す。文字柱との共有面なし。
+        // 6b. 「土台プレート」: 穴なしソリッド。
+        //     文字との共有面はエクスポート時に CSG Union で自動解沈。
         const textW = (clipMaxX - clipMinX) / CLIPPER_SCALE;
         const textH = (clipMaxY - clipMinY) / CLIPPER_SCALE;
         const halfW = textW / 2 + state.basePadding;
@@ -558,30 +557,19 @@ function generateTextAndBase(targetBox) {
         const r = Math.min(state.baseRadius, halfW, halfH);
 
         const baseOutlinePaths = createRoundedRectPaths64(halfW, halfH, r);
+        const baseShapes = paths64ToThreeShapes(baseOutlinePaths);
+        if (baseShapes.length > 0) {
+            const baseGeom = new THREE.ExtrudeGeometry(baseShapes, {
+                depth: state.baseThickness,
+                bevelEnabled: false
+            });
+            flipYCorrectly(baseGeom);
+            baseGeom.translate(0, 0, -state.baseThickness);
 
-        let baseRingPaths;
-        try {
-            baseRingPaths = Clipper.Difference(baseOutlinePaths, centeredTextPaths, FillRule.NonZero);
-        } catch (e) {
-            console.warn('Clipper Difference failed, falling back to plain base:', e);
-            baseRingPaths = baseOutlinePaths;
-        }
-
-        if (baseRingPaths && baseRingPaths.length > 0) {
-            const baseRingShapes = paths64ToThreeShapes(baseRingPaths);
-            if (baseRingShapes.length > 0) {
-                const baseGeom = new THREE.ExtrudeGeometry(baseRingShapes, {
-                    depth: state.baseThickness,
-                    bevelEnabled: false
-                });
-                flipYCorrectly(baseGeom);
-                baseGeom.translate(0, 0, -state.baseThickness);
-
-                const baseMesh = new THREE.Mesh(baseGeom, materialBase);
-                baseMesh.castShadow = true;
-                baseMesh.receiveShadow = true;
-                groupBase.add(baseMesh);
-            }
+            const baseMesh = new THREE.Mesh(baseGeom, materialBase);
+            baseMesh.castShadow = true;
+            baseMesh.receiveShadow = true;
+            groupBase.add(baseMesh);
         }
 
         // targetBox: XY = テキスト視覚範囲のみ（リング自動配置の基準に使用）
@@ -974,10 +962,6 @@ if (exportBtn) {
             try {
                 const exporter = new STLExporter();
 
-                // 各シェルを独立したまま rootGroup ごとエクスポートする。
-                // mergeGeometries で結合すると文字柱外壁と土台リング内壁が
-                // 同一位置・逆法線で重複し Non-manifold になるため廃止。
-                // ideamaker / PrusaSlicer は複数シェルの STL を Union 解釈するので問題なし。
                 rootGroup.updateMatrixWorld(true);
                 const exportTarget = rootGroup;
 
