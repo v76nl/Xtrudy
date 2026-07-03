@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STLExporter } from 'three/addons/exporters/STLExporter';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils';
 import { state } from './state.ts';
 import { loadFont, updateGeometry, FontKey } from './geometry.ts';
 import { rootGroup, camera, renderer } from './scene.ts';
@@ -235,11 +236,37 @@ export function initEvents(): void {
 
             setTimeout(() => {
                 try {
-                    const exporter = new STLExporter();
+                    // 1. 全メッシュのジオメトリをワールド座標に変換して収集
                     rootGroup.updateMatrixWorld(true);
-                    const exportTarget = rootGroup;
+                    const geometries: THREE.BufferGeometry[] = [];
+                    rootGroup.traverse(obj => {
+                        if (!(obj instanceof THREE.Mesh)) return;
+                        const geom = obj.geometry.clone();
+                        geom.applyMatrix4(obj.matrixWorld);
+                        // mergeGeometries はインデックスなしジオメトリを想定するため index を削除
+                        geom.deleteAttribute('uv');
+                        geometries.push(geom);
+                    });
 
-                    const result = exporter.parse(exportTarget, { binary: true });
+                    if (geometries.length === 0) {
+                        alert('エクスポートするメッシュがありません。');
+                        return;
+                    }
+
+                    // 2. 1つのジオメトリに統合し、重複頂点を溶接
+                    const merged = mergeGeometries(geometries);
+                    if (!merged) throw new Error('mergeGeometries に失敗しました。');
+                    const welded = mergeVertices(merged, 1e-4);
+                    welded.computeVertexNormals();
+                    geometries.forEach(g => g.dispose());
+                    merged.dispose();
+
+                    // 3. STL エクスポート
+                    const exporter = new STLExporter();
+                    const exportMesh = new THREE.Mesh(welded);
+                    const result = exporter.parse(exportMesh, { binary: true });
+                    welded.dispose();
+
                     const blob = new Blob([result], { type: 'application/octet-stream' });
                     const link = document.createElement('a');
                     link.href = URL.createObjectURL(blob);
