@@ -26,7 +26,7 @@ export interface StateType {
 
 export const state: StateType = {
     mode: 'text',
-    text: '電気工学研究部',
+    text: 'Xtrudy',
     fontKey: 'sans',
     textSize: 10,
     textSpacing: -1,
@@ -42,7 +42,7 @@ export const state: StateType = {
     ringShape: 32,
     ringAutoY: false,
     ringX: 0,
-    ringY: 11,
+    ringY: 11.5,
     ringSize: 3,
     ringTube: 1,
     ringRot: 0,
