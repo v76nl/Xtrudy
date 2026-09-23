@@ -1,6 +1,21 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls";
 
+// WebGL の利用可否チェック
+export function isWebGLAvailable(): boolean {
+  try {
+    const testCanvas = document.createElement("canvas");
+    return !!(
+      (window.WebGL2RenderingContext && testCanvas.getContext("webgl2")) ||
+      (window.WebGLRenderingContext &&
+        (testCanvas.getContext("webgl") ||
+          testCanvas.getContext("experimental-webgl")))
+    );
+  } catch {
+    return false;
+  }
+}
+
 // Three.js セットアップ
 export const canvas = document.querySelector(
   "#gl-canvas",
@@ -8,14 +23,35 @@ export const canvas = document.querySelector(
 if (!canvas) {
   throw new Error("Canvas #gl-canvas not found");
 }
-export const renderer = new THREE.WebGLRenderer({
-  canvas,
-  antialias: true,
-});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+let mainRenderer: THREE.WebGLRenderer | null = null;
+if (isWebGLAvailable()) {
+  try {
+    mainRenderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+    });
+    mainRenderer.setSize(window.innerWidth, window.innerHeight);
+    mainRenderer.setPixelRatio(window.devicePixelRatio);
+    mainRenderer.shadowMap.enabled = true;
+    mainRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  } catch (err) {
+    console.warn("Main WebGLRenderer init failed:", err);
+    mainRenderer = null;
+  }
+}
+
+if (!mainRenderer) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      showWebGLDisabledWarning();
+    });
+  } else {
+    showWebGLDisabledWarning();
+  }
+}
+
+export const renderer: THREE.WebGLRenderer | null = mainRenderer;
 
 export const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf0f2f5);
@@ -105,8 +141,12 @@ export function animate(): void {
   requestAnimationFrame(animate);
   updateCameraAnimation();
   controls.update();
-  renderer.render(scene, camera);
-  updateGizmo();
+  if (renderer) {
+    renderer.render(scene, camera);
+  }
+  if (gizmoRenderer) {
+    updateGizmo();
+  }
 }
 
 // ナビゲーションギズモ (右上固定の別レンダラー描画ウィジェット)
@@ -118,16 +158,27 @@ export const gizmoContainer = document.getElementById(
   "gizmo-container",
 ) as HTMLElement | null;
 
-if (!gizmoCanvas) {
-  throw new Error("gizmo-canvas not found");
+let _gizmoRenderer: THREE.WebGLRenderer | null = null;
+if (mainRenderer && gizmoCanvas && isWebGLAvailable()) {
+  try {
+    _gizmoRenderer = new THREE.WebGLRenderer({
+      canvas: gizmoCanvas,
+      alpha: true,
+      antialias: true,
+    });
+    _gizmoRenderer.setSize(GIZMO_SIZE, GIZMO_SIZE);
+    _gizmoRenderer.setPixelRatio(window.devicePixelRatio);
+  } catch (err) {
+    console.warn("Gizmo WebGLRenderer init failed:", err);
+    _gizmoRenderer = null;
+  }
 }
-export const gizmoRenderer = new THREE.WebGLRenderer({
-  canvas: gizmoCanvas,
-  alpha: true,
-  antialias: true,
-});
-gizmoRenderer.setSize(GIZMO_SIZE, GIZMO_SIZE);
-gizmoRenderer.setPixelRatio(window.devicePixelRatio);
+
+if (!_gizmoRenderer && gizmoContainer) {
+  gizmoContainer.style.display = "none";
+}
+
+export const gizmoRenderer: THREE.WebGLRenderer | null = _gizmoRenderer;
 
 export const gizmoScene = new THREE.Scene();
 export const gizmoCamera = new THREE.OrthographicCamera(
@@ -283,6 +334,8 @@ export function updateCameraAnimation(): void {
 // ギズモ描画: 毎フレーム呼び出してカメラ同期とラベル位置更新を行う
 const _gv = new THREE.Vector3();
 export function updateGizmo(): void {
+  if (!gizmoRenderer) return;
+
   // メインカメラと同じ向きをギズモカメラに反映する
   const dir = camera.position.clone().sub(controls.target).normalize();
   gizmoCamera.position.copy(dir.multiplyScalar(8));
@@ -297,12 +350,95 @@ export function updateGizmo(): void {
     const y = ((-_gv.y + 1) / 2) * GIZMO_SIZE;
     const el = labelEls[ax.id];
     if (el) {
-      el.style.left = x + "px";
-      el.style.top = y + "px";
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
       const dot = ax.pos3.clone().normalize().dot(dir);
       el.style.opacity = dot >= 0 ? "1" : "0.28";
     }
   });
 
   gizmoRenderer.render(gizmoScene, gizmoCamera);
+}
+
+// WebGL 無効時の案内モーダル表示
+export function showWebGLDisabledWarning(): void {
+  if (document.getElementById("webgl-warning-modal")) return;
+
+  const modal = document.createElement("div");
+  modal.id = "webgl-warning-modal";
+  modal.className =
+    "fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50";
+
+  modal.innerHTML = `
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 text-gray-800 border border-gray-100">
+      <div class="flex items-start gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-600 text-lg font-bold">
+          !
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-gray-900 leading-tight">3Dプレビューを表示できません</h2>
+          <p class="text-xs text-gray-500 mt-1">ブラウザのグラフィックアクセラレーション (WebGL) が無効になっています。</p>
+        </div>
+      </div>
+      
+      <div class="bg-gray-50 rounded-lg p-3.5 mb-4 text-xs space-y-3 border border-gray-200">
+        <div>
+          <p class="font-bold text-gray-700 mb-1">Google Chrome の場合</p>
+          <ol class="list-decimal list-inside space-y-0.5 text-gray-600 pl-1">
+            <li>アドレスバーに <code class="bg-gray-200 px-1 py-0.5 rounded text-[11px] font-mono text-blue-700 select-all">chrome://settings/system</code> を入力</li>
+            <li><strong>「グラフィック アクセラレーションが使用可能な場合は使用する」</strong> をオン</li>
+            <li>「再起動」をクリックしてブラウザを再起動</li>
+          </ol>
+        </div>
+        <div class="border-t border-gray-200 pt-2">
+          <p class="font-bold text-gray-700 mb-1">Microsoft Edge の場合</p>
+          <ol class="list-decimal list-inside space-y-0.5 text-gray-600 pl-1">
+            <li>アドレスバーに <code class="bg-gray-200 px-1 py-0.5 rounded text-[11px] font-mono text-blue-700 select-all">edge://settings/system</code> を入力</li>
+            <li><strong>「使用可能な場合はグラフィックス アクセラレーションを使用する」</strong> をオン</li>
+            <li>「再起動」をクリックしてブラウザを再起動</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="text-[11px] text-blue-800 bg-blue-50 p-2.5 rounded mb-5 leading-relaxed border border-blue-100">
+        ※ 3D画面は表示されませんが、文字編集や <strong>STLファイルの出力はそのまま利用可能</strong> です。
+      </div>
+
+      <div class="flex gap-2 justify-end">
+        <button id="btn-close-webgl-warning" class="px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition cursor-pointer">
+          閉じて編集を続ける
+        </button>
+        <button id="btn-reload-webgl" class="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-sm cursor-pointer">
+          再読み込み
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const btnReload = modal.querySelector("#btn-reload-webgl");
+  btnReload?.addEventListener("click", () => {
+    window.location.reload();
+  });
+
+  const btnClose = modal.querySelector("#btn-close-webgl-warning");
+  btnClose?.addEventListener("click", () => {
+    modal.remove();
+    createWarningBadge();
+  });
+}
+
+function createWarningBadge(): void {
+  if (document.getElementById("webgl-warning-badge")) return;
+  const badge = document.createElement("button");
+  badge.id = "webgl-warning-badge";
+  badge.className =
+    "fixed top-3 right-3 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-md flex items-center gap-1.5 z-40 transition cursor-pointer";
+  badge.innerHTML = "<span>! 3D無効 (WebGL)</span>";
+  badge.title = "WebGLが無効です。クリックして設定手順を表示";
+  badge.addEventListener("click", () => {
+    showWebGLDisabledWarning();
+  });
+  document.body.appendChild(badge);
 }
