@@ -1,3 +1,4 @@
+import { PanelLeftClose, PanelLeftOpen, createElement } from "lucide";
 import * as THREE from "three";
 import { exportSTL } from "./export.ts";
 import { type FontKey, loadFont } from "./fonts.ts";
@@ -8,16 +9,19 @@ import { state } from "./state.ts";
 export function updateDimensionsInfo(): void {
   rootGroup.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(rootGroup);
-  const dimInfo = document.getElementById("dimensions-info");
-  if (!dimInfo) return;
+  const dimW = document.getElementById("dim-w");
+  const dimH = document.getElementById("dim-h");
+  const dimD = document.getElementById("dim-d");
+  if (!dimW || !dimH || !dimD) return;
   if (box.isEmpty()) {
-    dimInfo.innerHTML = "W: 0 mm<br>H: 0 mm<br>D: 0 mm";
+    dimW.textContent = "0.0";
+    dimH.textContent = "0.0";
+    dimD.textContent = "0.0";
     return;
   }
-  const w = (box.max.x - box.min.x).toFixed(1);
-  const h = (box.max.y - box.min.y).toFixed(1);
-  const d = (box.max.z - box.min.z).toFixed(1);
-  dimInfo.innerHTML = `W: ${w} mm<br>H: ${h} mm<br>D: ${d} mm`;
+  dimW.textContent = (box.max.x - box.min.x).toFixed(1);
+  dimH.textContent = (box.max.y - box.min.y).toFixed(1);
+  dimD.textContent = (box.max.z - box.min.z).toFixed(1);
 }
 
 export function showLoading(show: boolean): void {
@@ -300,12 +304,24 @@ export function initEvents(): void {
 
   const uiPanel = document.getElementById("ui-panel");
   const btnToggle = document.getElementById("toggle-ui");
+  const updateToggleIcon = () => {
+    if (!btnToggle || !uiPanel) return;
+    const isCollapsed = uiPanel.classList.contains("collapsed");
+    btnToggle.innerHTML = "";
+    const icon = createElement(
+      isCollapsed ? PanelLeftOpen : PanelLeftClose,
+    );
+    btnToggle.appendChild(icon);
+    const label = isCollapsed ? "UIを表示" : "UIを隠す";
+    btnToggle.setAttribute("aria-label", label);
+    btnToggle.setAttribute("title", label);
+  };
+
   if (btnToggle && uiPanel) {
+    updateToggleIcon();
     btnToggle.addEventListener("click", () => {
       uiPanel.classList.toggle("collapsed");
-      btnToggle.textContent = uiPanel.classList.contains("collapsed")
-        ? "UIを表示"
-        : "UIを隠す";
+      updateToggleIcon();
     });
   }
 

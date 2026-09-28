@@ -27,22 +27,64 @@ body {
   transform: translateX(-100%);
 }
 
-/* パネル表示/非表示ボタン (パネルが collapsed のとき left:10px に移動) */
+/* パネルヘッダー */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.panel-header h1 {
+  margin: 0;
+}
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: #64748b;
+  transition: color 0.2s, background-color 0.2s;
+}
+.github-link:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
+}
+
+/* パネル表示/非表示ボタン (パネルが collapsed のとき left:12px に移動) */
 #toggle-ui {
   position: absolute;
-  top: 10px;
-  left: 350px;
+  top: 12px;
+  left: 352px;
   z-index: 20;
-  background: #3b82f6;
-  color: white;
-  padding: 0.5rem;
-  border-radius: 0.25rem;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #4b5563;
   cursor: pointer;
-  transition: left 0.3s ease;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: left 0.3s ease, background-color 0.2s, color 0.2s,
+    border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  padding: 0;
+}
+#toggle-ui:hover {
+  background: #ffffff;
+  color: #2563eb;
+  border-color: #93c5fd;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+#toggle-ui:active {
+  transform: scale(0.96);
 }
 #ui-panel.collapsed + #toggle-ui {
-  left: 10px;
+  left: 12px;
 }
 
 /* コントロールグループ共通 */
@@ -160,16 +202,52 @@ input[type="file"] {
   color: #4b5563 !important;
 }
 
-/* サイズ表示パネル (モノスペース・ダーク背景) */
-.info-display {
-  background: #1f2937;
-  padding: 0.75rem;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9rem;
-  color: #4ade80;
+/* サイズ表示パネル (ライトテーマ) */
+.dimensions-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
   margin-top: 0.5rem;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.dim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.dim-label {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 500;
+  width: 3.5rem;
+  flex-shrink: 0;
+}
+
+.dim-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: right;
+  flex: 1;
+  padding-right: 0.35rem;
+}
+
+.dim-unit {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  width: 1.5rem;
+  text-align: left;
+  flex-shrink: 0;
 }
 
 /* 処理中オーバーレイ (フォント読み込み時などに表示) */
