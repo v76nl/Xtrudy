@@ -54,22 +54,24 @@ if (!mainRenderer) {
 export const renderer: THREE.WebGLRenderer | null = mainRenderer;
 
 export const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf0f2f5);
-scene.fog = new THREE.Fog(0xf0f2f5, 200, 600);
+// 背景色・フォグ: ライトスレート (#f8fafc)
+scene.background = new THREE.Color(0xf8fafc);
+scene.fog = new THREE.Fog(0xf8fafc, 200, 600);
 
 // グリッドと影受け平面 (Z軸が上を向くよう X回転)
+// GridHelper(全体サイズ, 分割数, 中心軸線の色, 格子線の色)
 export const gridHelper = new THREE.GridHelper(
-  200,
-  20,
-  0xcccccc,
-  0xe5e5e5,
+  200, // 全体サイズ (200mm)
+  20, // 分割数 (20分割 = 1マス 10mm)
+  0xcbd5e1, // 中央軸線の色: 16進カラー #cbd5e1 (Slate-300)
+  0xe2e8f0, // 格子線の色: 16進カラー #e2e8f0 (Slate-200)
 );
 gridHelper.rotation.x = Math.PI / 2;
 gridHelper.position.z = -0.1;
 scene.add(gridHelper);
 
 export const planeGeometry = new THREE.PlaneGeometry(500, 500);
-export const planeMaterial = new THREE.ShadowMaterial({ opacity: 0.15 });
+export const planeMaterial = new THREE.ShadowMaterial({ opacity: 0.12 });
 export const plane = new THREE.Mesh(planeGeometry, planeMaterial);
 plane.position.z = -0.2;
 plane.receiveShadow = true;
@@ -91,38 +93,41 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 
 // ライティング
-export const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+export const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
 export const hemiLight = new THREE.HemisphereLight(
-  0xffffff,
-  0x444444,
-  0.6,
+  0xffffff, // 空からの環境光: 白 (#ffffff)
+  0x64748b, // 地面からの反射光: スレートグレー (#64748b)
+  0.5,
 );
 hemiLight.position.set(0, 0, 50);
 scene.add(hemiLight);
 
-export const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+export const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(50, -50, 100);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(2048, 2048);
 dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
-// マテリアル (メインモデル / 土台 / リング)
+// マテリアル (メインモデル: シグネチャーオレンジ / 土台・リング・補強板: ライトスレートグレー)
 export const materialMain = new THREE.MeshStandardMaterial({
-  color: 0x3b82f6,
-  roughness: 0.3,
+  color: 0xea580c, // シグネチャーオレンジ (#ea580c)
+  roughness: 0.35,
+  metalness: 0.05,
   side: THREE.DoubleSide,
 });
 export const materialBase = new THREE.MeshStandardMaterial({
-  color: 0x9ca3af,
-  roughness: 0.4,
+  color: 0xa8b3cf, // 明るいライトスレートグレー (#a8b3cf)
+  roughness: 0.45,
+  metalness: 0.05,
   side: THREE.DoubleSide,
 });
 export const materialRing = new THREE.MeshStandardMaterial({
-  color: 0xf59e0b,
-  roughness: 0.3,
+  color: 0xa8b3cf, // 土台と同色のライトスレートグレー (#a8b3cf)
+  roughness: 0.45,
+  metalness: 0.05,
   side: THREE.DoubleSide,
 });
 

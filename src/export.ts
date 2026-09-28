@@ -9,8 +9,15 @@ import { rootGroup } from "./scene.ts";
 // シーン内の全メッシュをワールド座標で結合し、重複頂点を溶接してバイナリ STL として出力する
 export function exportSTL(exportBtn: HTMLButtonElement | null): void {
   if (!exportBtn) return;
+  const originalHTML = exportBtn.innerHTML;
   exportBtn.disabled = true;
-  exportBtn.textContent = "Processing...";
+
+  const btnText = exportBtn.querySelector<HTMLElement>(".btn-text");
+  if (btnText) {
+    btnText.textContent = "生成中...";
+  } else {
+    exportBtn.textContent = "生成中...";
+  }
 
   setTimeout(() => {
     try {
@@ -57,7 +64,7 @@ export function exportSTL(exportBtn: HTMLButtonElement | null): void {
       alert("エクスポートに失敗しました: " + err.message);
     } finally {
       exportBtn.disabled = false;
-      exportBtn.textContent = "Export STL";
+      exportBtn.innerHTML = originalHTML;
     }
   }, 50);
 }

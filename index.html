@@ -14,56 +14,105 @@
     <!-- フォント読み込みに使う opentype.js (グローバル変数 opentype を提供) -->
     <script src="https://unpkg.com/opentype.js@1.3.4/dist/opentype.min.js"></script>
 
-    <!-- Tailwind CSS (ユーティリティクラスによるレイアウト) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- フォント読み込み中に表示するオーバーレイ -->
-    <div id="loading">処理中……</div>
+    <!-- フォント読み込み中に表示するインジケータ -->
+    <div id="loading">フォント読込中……</div>
 
     <!-- 左サイドのコントロールパネル (非表示時は collapsed クラスが付く) -->
     <div id="ui-panel">
-        <h1 class="text-xl font-bold mb-4 text-blue-600">Xtrudy</h1>
+        <div class="panel-header">
+            <h1 class="panel-title">Xtrudy<span class="accent-dot">.</span></h1>
+            <a href="https://github.com/v76nl/Xtrudy" target="_blank" rel="noopener noreferrer" class="github-link" title="GitHub リポジトリ" aria-label="GitHub リポジトリ">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                </svg>
+            </a>
+        </div>
 
         <!-- 概算サイズ表示 (モデル全体の AABB から計算) -->
         <div class="control-group">
             <label class="control-label">概算サイズ</label>
-            <div id="dimensions-info" class="info-display">
-                W: 0 mm<br>H: 0 mm<br>D: 0 mm
+            <div id="dimensions-info" class="dimensions-card">
+                <div class="dim-row">
+                    <span class="dim-label">幅</span>
+                    <span class="dim-value" id="dim-w">0.0</span>
+                    <span class="dim-unit">mm</span>
+                </div>
+                <div class="dim-row">
+                    <span class="dim-label">高さ</span>
+                    <span class="dim-value" id="dim-h">0.0</span>
+                    <span class="dim-unit">mm</span>
+                </div>
+                <div class="dim-row">
+                    <span class="dim-label">奥行き</span>
+                    <span class="dim-value" id="dim-d">0.0</span>
+                    <span class="dim-unit">mm</span>
+                </div>
             </div>
         </div>
 
         <!-- 入力ソース選択とその設定 (テキスト / SVG を切り替え) -->
         <div class="control-group">
             <label class="control-label mb-2">入力ソース</label>
-            <div class="flex gap-2 mb-3">
-                <button id="mode-text" class="flex-1 py-1 px-2 btn-mode-active rounded text-sm transition">テキスト</button>
-                <button id="mode-svg" class="flex-1 py-1 px-2 btn-mode-inactive rounded text-sm transition">SVG</button>
+            <div class="segmented-control" role="tablist">
+                <button id="mode-text" class="segment-btn active" role="tab" aria-selected="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="segment-icon">
+                        <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                        <line x1="9" y1="20" x2="15" y2="20"></line>
+                        <line x1="12" y1="4" x2="12" y2="20"></line>
+                    </svg>
+                    <span>テキスト</span>
+                </button>
+                <button id="mode-svg" class="segment-btn" role="tab" aria-selected="false">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="segment-icon">
+                        <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+                        <circle cx="9" cy="9" r="2"></circle>
+                        <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+                    </svg>
+                    <span>SVG</span>
+                </button>
             </div>
 
             <!-- テキストモード用コントロール -->
             <div id="controls-text">
-                <label class="control-label">テキスト</label>
-                <input type="text" id="input-text" class="mb-2">
+                <label class="control-label" for="input-text">テキスト</label>
+                <div class="input-with-icon-wrapper mb-2">
+                    <input type="text" id="input-text" placeholder="テキストを入力">
+                    <span class="input-edit-icon" title="編集可能" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
+                            <path d="m15 5 4 4"></path>
+                        </svg>
+                    </span>
+                </div>
 
                 <label class="control-label">フォント</label>
                 <select id="font-select" class="mb-2">
                     <option value="sans">Noto Sans JP (ゴシック)</option>
+                    <option value="zen">Zen Maru Gothic (丸ゴシック)</option>
+                    <option value="dela">Dela Gothic One (超極太)</option>
                     <option value="serif">Noto Serif JP (明朝)</option>
-                    <option value="dot">DotGothic16</option>
-                    <option value="ramp">Rampart One</option>
+                    <option value="kaisei">Kaisei Tokumin (解星特民)</option>
+                    <option value="yuji">Yuji Boku (毛筆・油司朴)</option>
+                    <option value="reggae">Reggae One (レゲエ)</option>
+                    <option value="dot">DotGothic16 (ドット)</option>
+                    <option value="googlesans">Google Sans (英数字)</option>
                 </select>
 
                 <div class="slider-container">
-                    <label class="slider-label">文字サイズ</label>
+                    <label class="slider-label" for="text-size">サイズ</label>
                     <input type="range" id="text-size" min="5" max="100">
+                    <input type="number" id="val-text-size" class="slider-val" min="5" max="100">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">字間</label>
+                    <label class="slider-label" for="text-spacing">字間</label>
                     <input type="range" id="text-spacing" min="-5" max="20" step="0.5">
+                    <input type="number" id="val-text-spacing" class="slider-val" min="-5" max="20" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
             </div>
 
@@ -72,51 +121,60 @@
                 <label class="control-label">SVGファイル</label>
                 <input type="file" id="input-file" accept=".svg" class="mb-2">
                 <div class="slider-container">
-                    <label class="slider-label">スケール</label>
-                    <input type="range" id="svg-scale" min="0.1" max="5.0" step="0.1">
+                    <label class="slider-label" for="svg-scale">スケール</label>
+                    <input type="range" id="svg-scale" min="0.01" max="5.0" step="0.01">
+                    <input type="number" id="val-svg-scale" class="slider-val" min="0.01" max="5.0" step="0.01">
+                    <span class="slider-unit">x</span>
                 </div>
             </div>
 
             <!-- 共通: 押し出し厚みと左右反転 (左右反転はハンコ用) -->
             <div class="slider-container mt-2">
-                <label class="slider-label">厚み</label>
+                <label class="slider-label" for="model-thickness">厚み</label>
                 <input type="range" id="model-thickness" min="1" max="20" step="0.5">
-                <span id="val-thickness" class="text-xs w-8 text-right font-mono"></span>
+                <input type="number" id="val-model-thickness" class="slider-val" min="1" max="20" step="0.5">
+                <span class="slider-unit">mm</span>
             </div>
-            <div class="flex items-center justify-between mt-2">
-                <label class="text-xs font-bold" for="mirror-x">左右反転</label>
-                <input type="checkbox" id="mirror-x" class="w-4 h-4 accent-blue-600">
+            <div class="checkbox-row mt-2">
+                <label class="checkbox-label" for="mirror-x">左右反転</label>
+                <input type="checkbox" id="mirror-x">
             </div>
         </div>
 
         <!-- 土台プレート設定 (メインモデルの背面に貼り付く平板) -->
         <div class="control-group">
-            <div class="flex items-center justify-between mb-2">
+            <div class="checkbox-row mb-2">
                 <label class="control-label m-0">土台</label>
-                <input type="checkbox" id="base-enable" class="w-4 h-4 accent-blue-600">
+                <input type="checkbox" id="base-enable">
             </div>
             <!-- opacity / pointer-events は JS の initUIFromState() で制御 -->
             <div id="controls-base" style="transition: opacity 0.2s;">
                 <div class="slider-container">
-                    <label class="slider-label">余白</label>
+                    <label class="slider-label" for="base-padding">余白</label>
                     <input type="range" id="base-padding" min="0" max="20" step="0.5">
+                    <input type="number" id="val-base-padding" class="slider-val" min="0" max="20" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">厚み</label>
+                    <label class="slider-label" for="base-thickness">厚み</label>
                     <input type="range" id="base-thickness" min="0.5" max="10" step="0.5">
+                    <input type="number" id="val-base-thickness" class="slider-val" min="0.5" max="10" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">角丸</label>
+                    <label class="slider-label" for="base-radius">角丸</label>
                     <input type="range" id="base-radius" min="0" max="20" step="0.5">
+                    <input type="number" id="val-base-radius" class="slider-val" min="0" max="20" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
             </div>
         </div>
 
         <!-- ストラップリング設定 (キーホルダー用の穴あきリング) -->
         <div class="control-group">
-            <div class="flex items-center justify-between mb-2">
+            <div class="checkbox-row mb-2">
                 <label class="control-label m-0">ストラップリング</label>
-                <input type="checkbox" id="ring-enable" class="w-4 h-4 accent-blue-600">
+                <input type="checkbox" id="ring-enable">
             </div>
             <div id="controls-ring">
                 <label class="control-label mt-1">形状</label>
@@ -128,54 +186,66 @@
                     <option value="5">正五角形</option>
                 </select>
 
-                <!-- 補強板: 真円選択時のみ表示。表示制御は updateReinforceVisibility() が行う -->
-                <div id="ctrl-ring-reinforce" class="flex items-center justify-between mb-1">
-                    <label class="text-xs font-bold text-blue-500" for="ring-reinforce">補強板</label>
-                    <input type="checkbox" id="ring-reinforce" class="w-4 h-4 accent-blue-600">
-                </div>
-
-                <div class="flex items-center justify-between mb-1">
-                    <label class="text-xs font-bold text-blue-500">上端に自動配置</label>
-                    <input type="checkbox" id="ring-auto-y" class="w-4 h-4 accent-blue-500">
+                <div class="checkbox-row">
+                    <label class="checkbox-label accent" for="ring-auto-y">上端に自動配置</label>
+                    <input type="checkbox" id="ring-auto-y">
                 </div>
 
                 <!-- スライダーと数値入力の双方向バインド -->
                 <div class="slider-container">
-                    <label class="slider-label">X座標</label>
+                    <label class="slider-label" for="ring-x">X座標</label>
                     <input type="range" id="ring-x" min="-100" max="100" step="0.5">
                     <input type="number" id="val-ring-x" class="slider-val" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">Y座標</label>
+                    <label class="slider-label" for="ring-y">Y座標</label>
                     <input type="range" id="ring-y" min="-100" max="100" step="0.5">
                     <input type="number" id="val-ring-y" class="slider-val" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">サイズ</label>
+                    <label class="slider-label" for="ring-size">サイズ</label>
                     <input type="range" id="ring-size" min="1" max="20" step="0.5">
                     <input type="number" id="val-ring-size" class="slider-val" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">太さ</label>
+                    <label class="slider-label" for="ring-tube">太さ</label>
                     <input type="range" id="ring-tube" min="0.5" max="5" step="0.1">
                     <input type="number" id="val-ring-tube" class="slider-val" step="0.1">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">回転</label>
+                    <label class="slider-label" for="ring-rot">回転</label>
                     <input type="range" id="ring-rot" min="0" max="360" step="15">
                     <input type="number" id="val-ring-rot" class="slider-val" step="15">
+                    <span class="slider-unit">°</span>
+                </div>
+
+                <!-- 補強板: 真円選択時のみ表示。表示制御は updateReinforceVisibility() が行う -->
+                <div id="ctrl-ring-reinforce" class="checkbox-row mt-2">
+                    <label class="checkbox-label accent" for="ring-reinforce">補強板</label>
+                    <input type="checkbox" id="ring-reinforce">
                 </div>
             </div>
         </div>
 
         <!-- STL バイナリ形式でエクスポート -->
-        <div class="control-group border-none">
-            <button id="btn-export" class="btn">STLを出力</button>
+        <div class="control-group">
+            <button id="btn-export" class="btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span class="btn-text">STLファイルを出力</span>
+            </button>
         </div>
     </div>
 
     <!-- サイドパネルの表示/非表示トグルボタン -->
-    <button id="toggle-ui">UIを隠す</button>
+    <button id="toggle-ui" aria-label="UIを隠す" title="UIを隠す"></button>
 
     <!-- ナビゲーションギズモ (右上固定。canvas は Three.js が別レンダラーで描画) -->
     <div id="gizmo-container">

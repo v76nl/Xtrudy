@@ -1,4 +1,4 @@
-import { loadFont } from "./fonts.ts";
+import { loadFont, prefetchOtherFonts } from "./fonts.ts";
 import { animate } from "./scene.ts";
 import { initEvents, initUIFromState } from "./ui.ts";
 
@@ -8,5 +8,7 @@ if (import.meta.env.DEV) {
 
 initUIFromState();
 initEvents();
-loadFont("sans");
+loadFont("sans").then(() => {
+  prefetchOtherFonts();
+});
 animate();
