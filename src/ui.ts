@@ -93,12 +93,13 @@ export function initEvents(): void {
   function setMode(m: "text" | "svg") {
     state.mode = m;
     const isText = m === "text";
-    document
-      .getElementById("mode-text")
-      ?.classList.toggle("active", isText);
-    document
-      .getElementById("mode-svg")
-      ?.classList.toggle("active", !isText);
+    const btnText = document.getElementById("mode-text");
+    const btnSvg = document.getElementById("mode-svg");
+    btnText?.classList.toggle("active", isText);
+    btnText?.setAttribute("aria-selected", String(isText));
+    btnSvg?.classList.toggle("active", !isText);
+    btnSvg?.setAttribute("aria-selected", String(!isText));
+
     const ctrlText = document.getElementById("controls-text");
     if (ctrlText) ctrlText.style.display = isText ? "block" : "none";
     const ctrlSvg = document.getElementById("controls-svg");

@@ -195,27 +195,49 @@ input[type="file"] {
   background: #2563eb;
 }
 
-/* モード切替ボタン */
-.mode-switch-group {
+/* セグメントコントロール (入力ソース切り替え) */
+.segmented-control {
   display: flex;
-  gap: 0.5rem;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  gap: 2px;
   margin-bottom: 0.75rem;
+  user-select: none;
 }
-.btn-mode {
+
+.segment-btn {
   flex: 1;
-  padding: 0.35rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
   border: none;
+  border-radius: 6px;
   cursor: pointer;
-  background: #e5e7eb;
-  color: #4b5563;
-  transition: background-color 0.2s, color 0.2s;
+  transition: all 0.15s ease;
+  line-height: 1;
 }
-.btn-mode.active {
-  background: #3b82f6;
-  color: #ffffff;
+
+.segment-btn:hover:not(.active) {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.segment-btn.active {
+  background: #ffffff;
+  color: #2563eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.segment-icon {
+  flex-shrink: 0;
 }
 
 /* チェックボックス行 */
