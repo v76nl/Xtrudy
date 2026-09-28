@@ -109,7 +109,6 @@ Webサイト: https://v76nl.github.io/Xtrudy/
 | Three.js            | 0.185      | 3D レンダリング / ジオメトリ生成 / STL エクスポート |
 | clipper2-js         | 1.2.4      | フォントパスの Boolean Union (非多様体対策)         |
 | opentype.js         | 1.3.4      | フォントファイルの解析とパス取得 (CDN)              |
-| Tailwind CSS        | CDN        | UI のユーティリティスタイル                         |
 | lucide              | 1.x        | UI アイコン (サイドパネル開閉など)                  |
 | Vite                | 8.x        | 開発サーバー / ビルドツール                         |
 | Biome               | 1.9.4      | 高速なコードチェック・フォーマッター                |

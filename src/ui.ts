@@ -39,39 +39,75 @@ export function updateReinforceVisibility(): void {
 }
 
 export function initEvents(): void {
-  const btnText = document.getElementById("mode-text");
-  const btnSvg = document.getElementById("mode-svg");
+  function bindSlider<K extends keyof typeof state>(
+    id: string,
+    key: K,
+    onUpdate?: (val: number) => void,
+  ): void {
+    const slider = document.getElementById(id) as HTMLInputElement | null;
+    if (!slider) return;
+    slider.addEventListener("input", () => {
+      const val = Number.parseFloat(slider.value);
+      (state[key] as number) = val;
+      if (onUpdate) onUpdate(val);
+      updateGeometry();
+    });
+  }
+
+  function bindSliderWithNumber<K extends keyof typeof state>(
+    sliderId: string,
+    numId: string,
+    key: K,
+  ): void {
+    const slider = document.getElementById(
+      sliderId,
+    ) as HTMLInputElement | null;
+    const numInput = document.getElementById(
+      numId,
+    ) as HTMLInputElement | null;
+    if (slider) {
+      slider.addEventListener("input", () => {
+        const val = Number.parseFloat(slider.value);
+        (state[key] as number) = val;
+        if (numInput) numInput.value = String(val);
+        updateGeometry();
+      });
+    }
+    if (numInput) {
+      numInput.addEventListener("input", () => {
+        let val = Number.parseFloat(numInput.value);
+        if (Number.isNaN(val)) return;
+        if (slider) {
+          val = Math.min(
+            Number.parseFloat(slider.max),
+            Math.max(Number.parseFloat(slider.min), val),
+          );
+          slider.value = String(val);
+        }
+        (state[key] as number) = val;
+        updateGeometry();
+      });
+    }
+  }
 
   function setMode(m: "text" | "svg") {
-    const btnText = document.getElementById("mode-text");
-    const btnSvg = document.getElementById("mode-svg");
     state.mode = m;
-    if (m === "text") {
-      if (btnText)
-        btnText.className =
-          "flex-1 py-1 px-2 btn-mode-active rounded text-sm transition";
-      if (btnSvg)
-        btnSvg.className =
-          "flex-1 py-1 px-2 btn-mode-inactive rounded text-sm transition";
-      const ctrlText = document.getElementById("controls-text");
-      if (ctrlText) ctrlText.style.display = "block";
-      const ctrlSvg = document.getElementById("controls-svg");
-      if (ctrlSvg) ctrlSvg.style.display = "none";
-    } else {
-      if (btnSvg)
-        btnSvg.className =
-          "flex-1 py-1 px-2 btn-mode-active rounded text-sm transition";
-      if (btnText)
-        btnText.className =
-          "flex-1 py-1 px-2 btn-mode-inactive rounded text-sm transition";
-      const ctrlText = document.getElementById("controls-text");
-      if (ctrlText) ctrlText.style.display = "none";
-      const ctrlSvg = document.getElementById("controls-svg");
-      if (ctrlSvg) ctrlSvg.style.display = "block";
-    }
+    const isText = m === "text";
+    document
+      .getElementById("mode-text")
+      ?.classList.toggle("active", isText);
+    document
+      .getElementById("mode-svg")
+      ?.classList.toggle("active", !isText);
+    const ctrlText = document.getElementById("controls-text");
+    if (ctrlText) ctrlText.style.display = isText ? "block" : "none";
+    const ctrlSvg = document.getElementById("controls-svg");
+    if (ctrlSvg) ctrlSvg.style.display = isText ? "none" : "block";
     updateGeometry();
   }
 
+  const btnText = document.getElementById("mode-text");
+  const btnSvg = document.getElementById("mode-svg");
   if (btnText) btnText.onclick = () => setMode("text");
   if (btnSvg) btnSvg.onclick = () => setMode("svg");
   setMode(state.mode);
@@ -99,25 +135,12 @@ export function initEvents(): void {
     });
   }
 
-  const textSizeSlider = document.getElementById(
-    "text-size",
-  ) as HTMLInputElement | null;
-  if (textSizeSlider) {
-    textSizeSlider.addEventListener("input", () => {
-      state.textSize = Number.parseFloat(textSizeSlider.value);
-      updateGeometry();
-    });
-  }
-
-  const textSpacingSlider = document.getElementById(
-    "text-spacing",
-  ) as HTMLInputElement | null;
-  if (textSpacingSlider) {
-    textSpacingSlider.addEventListener("input", () => {
-      state.textSpacing = Number.parseFloat(textSpacingSlider.value);
-      updateGeometry();
-    });
-  }
+  bindSlider("text-size", "textSize");
+  bindSlider("text-spacing", "textSpacing");
+  bindSlider("model-thickness", "modelThickness", (val) => {
+    const valThick = document.getElementById("val-thickness");
+    if (valThick) valThick.textContent = `${val}mm`;
+  });
 
   const fontSelect = document.getElementById(
     "font-select",
@@ -126,18 +149,6 @@ export function initEvents(): void {
     fontSelect.addEventListener("change", () => {
       state.fontKey = fontSelect.value;
       loadFont(state.fontKey as FontKey);
-    });
-  }
-
-  const thicknessSlider = document.getElementById(
-    "model-thickness",
-  ) as HTMLInputElement | null;
-  if (thicknessSlider) {
-    thicknessSlider.addEventListener("input", () => {
-      state.modelThickness = Number.parseFloat(thicknessSlider.value);
-      const valThick = document.getElementById("val-thickness");
-      if (valThick) valThick.textContent = state.modelThickness + "mm";
-      updateGeometry();
     });
   }
 
@@ -160,15 +171,7 @@ export function initEvents(): void {
     });
   }
 
-  const svgScaleSlider = document.getElementById(
-    "svg-scale",
-  ) as HTMLInputElement | null;
-  if (svgScaleSlider) {
-    svgScaleSlider.addEventListener("input", () => {
-      state.svgScale = Number.parseFloat(svgScaleSlider.value);
-      updateGeometry();
-    });
-  }
+  bindSlider("svg-scale", "svgScale");
 
   const baseEnableCheck = document.getElementById(
     "base-enable",
@@ -185,18 +188,9 @@ export function initEvents(): void {
     });
   }
 
-  ["base-padding", "base-thickness", "base-radius"].forEach((id) => {
-    const slider = document.getElementById(id) as HTMLInputElement | null;
-    if (slider) {
-      slider.addEventListener("input", () => {
-        const prop = id.replace(/-([a-z])/g, (_g, letter) =>
-          letter.toUpperCase(),
-        );
-        state[prop] = Number.parseFloat(slider.value);
-        updateGeometry();
-      });
-    }
-  });
+  bindSlider("base-padding", "basePadding");
+  bindSlider("base-thickness", "baseThickness");
+  bindSlider("base-radius", "baseRadius");
 
   const ringEnableCheck = document.getElementById(
     "ring-enable",
@@ -223,44 +217,12 @@ export function initEvents(): void {
     });
   }
 
-  // リングスライダー: range と number 入力を双方向でバインドする
-  ["ring-x", "ring-y", "ring-size", "ring-tube", "ring-rot"].forEach(
-    (id) => {
-      const slider = document.getElementById(
-        id,
-      ) as HTMLInputElement | null;
-      const numInput = document.getElementById(
-        "val-" + id,
-      ) as HTMLInputElement | null;
-      const prop = id.replace(/-([a-z])/g, (_g, letter) =>
-        letter.toUpperCase(),
-      );
-
-      if (slider) {
-        slider.addEventListener("input", () => {
-          const val = Number.parseFloat(slider.value);
-          state[prop] = val;
-          if (numInput) numInput.value = String(val);
-          updateGeometry();
-        });
-      }
-      if (numInput) {
-        numInput.addEventListener("input", () => {
-          let val = Number.parseFloat(numInput.value);
-          if (Number.isNaN(val)) return;
-          if (slider) {
-            val = Math.min(
-              Number.parseFloat(slider.max),
-              Math.max(Number.parseFloat(slider.min), val),
-            );
-            slider.value = String(val);
-          }
-          state[prop] = val;
-          updateGeometry();
-        });
-      }
-    },
-  );
+  // リングスライダー: range と number 入力を双方向でバインド
+  bindSliderWithNumber("ring-x", "val-ring-x", "ringX");
+  bindSliderWithNumber("ring-y", "val-ring-y", "ringY");
+  bindSliderWithNumber("ring-size", "val-ring-size", "ringSize");
+  bindSliderWithNumber("ring-tube", "val-ring-tube", "ringTube");
+  bindSliderWithNumber("ring-rot", "val-ring-rot", "ringRot");
 
   const ringShapeEl = document.getElementById(
     "ring-shape",

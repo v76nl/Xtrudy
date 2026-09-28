@@ -34,8 +34,11 @@ body {
   justify-content: space-between;
   margin-bottom: 1rem;
 }
-.panel-header h1 {
+.panel-title {
   margin: 0;
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #2563eb;
 }
 .github-link {
   display: inline-flex;
@@ -192,14 +195,78 @@ input[type="file"] {
   background: #2563eb;
 }
 
-/* モード切替ボタン (アクティブ/非アクティブ) */
-.btn-mode-active {
-  background: #3b82f6 !important;
-  color: white !important;
+/* モード切替ボタン */
+.mode-switch-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
-.btn-mode-inactive {
-  background: #e5e7eb !important;
-  color: #4b5563 !important;
+.btn-mode {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  background: #e5e7eb;
+  color: #4b5563;
+  transition: background-color 0.2s, color 0.2s;
+}
+.btn-mode.active {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+/* チェックボックス行 */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.checkbox-label {
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #374151;
+  cursor: pointer;
+}
+.checkbox-label.accent {
+  color: #3b82f6;
+}
+input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #3b82f6;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* インライン数値表示 (厚みなど) */
+.slider-val-inline {
+  font-size: 0.75rem;
+  width: 2.25rem;
+  text-align: right;
+  font-family: monospace;
+  color: #4b5563;
+}
+
+/* ユーティリティマージン */
+.mb-1 {
+  margin-bottom: 0.25rem;
+}
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+.mt-1 {
+  margin-top: 0.25rem;
+}
+.mt-2 {
+  margin-top: 0.5rem;
+}
+.m-0 {
+  margin: 0;
 }
 
 /* サイズ表示パネル (ライトテーマ) */
