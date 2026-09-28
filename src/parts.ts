@@ -128,7 +128,7 @@ export function generateRingReinforcement(baseTopY: number): void {
   });
   geometry.translate(0, 0, -cylHeight / 2);
 
-  const mesh = new THREE.Mesh(geometry, materialRing);
+  const mesh = new THREE.Mesh(geometry, materialBase);
   mesh.position.set(state.ringX, state.ringY, ringZ);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
