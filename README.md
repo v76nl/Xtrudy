@@ -53,7 +53,7 @@ Webサイト: https://v76nl.github.io/Xtrudy/
 
 | 項目     | 説明                                                       |
 | -------- | ---------------------------------------------------------- |
-| テキスト | 日本語フォント 4 種から選択して文字を入力します            |
+| テキスト | フォント 9 種から選択して文字を入力します                  |
 | SVG      | SVG ファイルを読み込んでパスを押し出します                 |
 | 厚み     | 押し出す深さ (mm)                                          |
 | 左右反転 | X 軸で鏡像化します。ハンコのスタンプ面を作る際に使用します |
@@ -61,9 +61,14 @@ Webサイト: https://v76nl.github.io/Xtrudy/
 対応フォント:
 
 - Noto Sans JP (ゴシック)
+- Zen Maru Gothic (丸ゴシック)
+- Dela Gothic One (超極太ゴシック)
 - Noto Serif JP (明朝)
-- DotGothic16
-- Rampart One
+- Kaisei Tokumin (解星 特民)
+- Yuji Boku (毛筆・油司 朴)
+- Reggae One (レゲエ)
+- DotGothic16 (ドット)
+- Google Sans (英数字)
 
 ### 土台
 

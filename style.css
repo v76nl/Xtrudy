@@ -317,20 +317,23 @@ input[type="checkbox"] {
   flex-shrink: 0;
 }
 
-/* 処理中オーバーレイ (フォント読み込み時などに表示) */
+/* 処理中インジケータ (ファーストタッチを妨げない画面右下の控えめな通知バッジ) */
 #loading {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  font-size: 1.5rem;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  color: #1e293b;
+  font-size: 0.85rem;
+  font-weight: 500;
   pointer-events: none;
   z-index: 50;
   display: none;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 1rem 2rem;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* ナビゲーションギズモ (右上固定・別レンダラーで描画) */
