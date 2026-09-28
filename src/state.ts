@@ -30,7 +30,7 @@ export const state: StateType = {
   fontKey: "sans",
   textSize: 10,
   textSpacing: -1,
-  modelThickness: 3,
+  modelThickness: 1.5,
   svgContent: null,
   svgScale: 1.0,
   mirrorX: false,

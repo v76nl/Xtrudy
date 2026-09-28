@@ -39,21 +39,6 @@ export function updateReinforceVisibility(): void {
 }
 
 export function initEvents(): void {
-  function bindSlider<K extends keyof typeof state>(
-    id: string,
-    key: K,
-    onUpdate?: (val: number) => void,
-  ): void {
-    const slider = document.getElementById(id) as HTMLInputElement | null;
-    if (!slider) return;
-    slider.addEventListener("input", () => {
-      const val = Number.parseFloat(slider.value);
-      (state[key] as number) = val;
-      if (onUpdate) onUpdate(val);
-      updateGeometry();
-    });
-  }
-
   function bindSliderWithNumber<K extends keyof typeof state>(
     sliderId: string,
     numId: string,
@@ -65,6 +50,35 @@ export function initEvents(): void {
     const numInput = document.getElementById(
       numId,
     ) as HTMLInputElement | null;
+    const handleWheel = (e: WheelEvent) => {
+      if (!slider || slider.disabled) return;
+      e.preventDefault();
+      const step = Number.parseFloat(slider.step) || 1;
+      const min =
+        slider.min !== ""
+          ? Number.parseFloat(slider.min)
+          : Number.NEGATIVE_INFINITY;
+      const max =
+        slider.max !== ""
+          ? Number.parseFloat(slider.max)
+          : Number.POSITIVE_INFINITY;
+      const currentVal = Number.parseFloat(slider.value) || 0;
+      const dir = e.deltaY < 0 ? 1 : -1;
+      let nextVal = currentVal + dir * step;
+      const stepStr = String(slider.step);
+      const decimals = stepStr.includes(".")
+        ? stepStr.split(".")[1].length
+        : 0;
+      nextVal = Math.min(max, Math.max(min, nextVal));
+      nextVal = Number.parseFloat(nextVal.toFixed(decimals));
+      if (nextVal !== currentVal) {
+        slider.value = String(nextVal);
+        (state[key] as number) = nextVal;
+        if (numInput) numInput.value = String(nextVal);
+        updateGeometry();
+      }
+    };
+
     if (slider) {
       slider.addEventListener("input", () => {
         const val = Number.parseFloat(slider.value);
@@ -72,6 +86,7 @@ export function initEvents(): void {
         if (numInput) numInput.value = String(val);
         updateGeometry();
       });
+      slider.addEventListener("wheel", handleWheel, { passive: false });
     }
     if (numInput) {
       numInput.addEventListener("input", () => {
@@ -87,6 +102,7 @@ export function initEvents(): void {
         (state[key] as number) = val;
         updateGeometry();
       });
+      numInput.addEventListener("wheel", handleWheel, { passive: false });
     }
   }
 
@@ -136,12 +152,13 @@ export function initEvents(): void {
     });
   }
 
-  bindSlider("text-size", "textSize");
-  bindSlider("text-spacing", "textSpacing");
-  bindSlider("model-thickness", "modelThickness", (val) => {
-    const valThick = document.getElementById("val-thickness");
-    if (valThick) valThick.textContent = `${val}mm`;
-  });
+  bindSliderWithNumber("text-size", "val-text-size", "textSize");
+  bindSliderWithNumber("text-spacing", "val-text-spacing", "textSpacing");
+  bindSliderWithNumber(
+    "model-thickness",
+    "val-model-thickness",
+    "modelThickness",
+  );
 
   const fontSelect = document.getElementById(
     "font-select",
@@ -172,7 +189,7 @@ export function initEvents(): void {
     });
   }
 
-  bindSlider("svg-scale", "svgScale");
+  bindSliderWithNumber("svg-scale", "val-svg-scale", "svgScale");
 
   const baseEnableCheck = document.getElementById(
     "base-enable",
@@ -189,9 +206,13 @@ export function initEvents(): void {
     });
   }
 
-  bindSlider("base-padding", "basePadding");
-  bindSlider("base-thickness", "baseThickness");
-  bindSlider("base-radius", "baseRadius");
+  bindSliderWithNumber("base-padding", "val-base-padding", "basePadding");
+  bindSliderWithNumber(
+    "base-thickness",
+    "val-base-thickness",
+    "baseThickness",
+  );
+  bindSliderWithNumber("base-radius", "val-base-radius", "baseRadius");
 
   const ringEnableCheck = document.getElementById(
     "ring-enable",
@@ -319,38 +340,36 @@ export function initUIFromState(): void {
     el.style.pointerEvents = on ? "auto" : "none";
   };
 
-  // テキスト
+  // 基本コントロール
   set("input-text", state.text);
   set("font-select", state.fontKey);
-  set("text-size", state.textSize);
-  set("text-spacing", state.textSpacing);
-  set("svg-scale", state.svgScale);
-  set("model-thickness", state.modelThickness);
   check("mirror-x", state.mirrorX);
-  const valThick = document.getElementById("val-thickness");
-  if (valThick) valThick.textContent = state.modelThickness + "mm";
 
-  // 土台
+  // 土台 & リングのトグル・オプション
   check("base-enable", state.baseEnabled);
   panelOpacity("controls-base", state.baseEnabled);
-  set("base-padding", state.basePadding);
-  set("base-thickness", state.baseThickness);
-  set("base-radius", state.baseRadius);
-
-  // ストラップリング
   check("ring-enable", state.ringEnabled);
+  panelOpacity("controls-ring", state.ringEnabled);
   set("ring-shape", state.ringShape);
   check("ring-reinforce", state.ringReinforce);
   check("ring-auto-y", state.ringAutoY);
 
-  const ringProps: [string, string, string][] = [
+  // 全スライダー & 数値入力ペアの一括反映
+  const sliderProps: [string, string, keyof typeof state][] = [
+    ["text-size", "val-text-size", "textSize"],
+    ["text-spacing", "val-text-spacing", "textSpacing"],
+    ["svg-scale", "val-svg-scale", "svgScale"],
+    ["model-thickness", "val-model-thickness", "modelThickness"],
+    ["base-padding", "val-base-padding", "basePadding"],
+    ["base-thickness", "val-base-thickness", "baseThickness"],
+    ["base-radius", "val-base-radius", "baseRadius"],
     ["ring-x", "val-ring-x", "ringX"],
     ["ring-y", "val-ring-y", "ringY"],
     ["ring-size", "val-ring-size", "ringSize"],
     ["ring-tube", "val-ring-tube", "ringTube"],
     ["ring-rot", "val-ring-rot", "ringRot"],
   ];
-  ringProps.forEach(([sid, nid, prop]) => {
+  sliderProps.forEach(([sid, nid, prop]) => {
     set(sid, state[prop]);
     set(nid, state[prop]);
   });

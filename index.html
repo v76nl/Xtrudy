@@ -24,7 +24,7 @@
     <!-- 左サイドのコントロールパネル (非表示時は collapsed クラスが付く) -->
     <div id="ui-panel">
         <div class="panel-header">
-            <h1 class="panel-title">Xtrudy</h1>
+            <h1 class="panel-title">Xtrudy<span class="accent-dot">.</span></h1>
             <a href="https://github.com/v76nl/Xtrudy" target="_blank" rel="noopener noreferrer" class="github-link" title="GitHub リポジトリ" aria-label="GitHub リポジトリ">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                     <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
@@ -78,8 +78,16 @@
 
             <!-- テキストモード用コントロール -->
             <div id="controls-text">
-                <label class="control-label">テキスト</label>
-                <input type="text" id="input-text" class="mb-2">
+                <label class="control-label" for="input-text">テキスト</label>
+                <div class="input-with-icon-wrapper mb-2">
+                    <input type="text" id="input-text" placeholder="テキストを入力">
+                    <span class="input-edit-icon" title="編集可能" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
+                            <path d="m15 5 4 4"></path>
+                        </svg>
+                    </span>
+                </div>
 
                 <label class="control-label">フォント</label>
                 <select id="font-select" class="mb-2">
@@ -95,12 +103,16 @@
                 </select>
 
                 <div class="slider-container">
-                    <label class="slider-label">文字サイズ</label>
+                    <label class="slider-label" for="text-size">サイズ</label>
                     <input type="range" id="text-size" min="5" max="100">
+                    <input type="number" id="val-text-size" class="slider-val" min="5" max="100">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">字間</label>
+                    <label class="slider-label" for="text-spacing">字間</label>
                     <input type="range" id="text-spacing" min="-5" max="20" step="0.5">
+                    <input type="number" id="val-text-spacing" class="slider-val" min="-5" max="20" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
             </div>
 
@@ -109,16 +121,19 @@
                 <label class="control-label">SVGファイル</label>
                 <input type="file" id="input-file" accept=".svg" class="mb-2">
                 <div class="slider-container">
-                    <label class="slider-label">スケール</label>
+                    <label class="slider-label" for="svg-scale">スケール</label>
                     <input type="range" id="svg-scale" min="0.01" max="5.0" step="0.01">
+                    <input type="number" id="val-svg-scale" class="slider-val" min="0.01" max="5.0" step="0.01">
+                    <span class="slider-unit">x</span>
                 </div>
             </div>
 
             <!-- 共通: 押し出し厚みと左右反転 (左右反転はハンコ用) -->
             <div class="slider-container mt-2">
-                <label class="slider-label">厚み</label>
+                <label class="slider-label" for="model-thickness">厚み</label>
                 <input type="range" id="model-thickness" min="1" max="20" step="0.5">
-                <span id="val-thickness" class="slider-val-inline"></span>
+                <input type="number" id="val-model-thickness" class="slider-val" min="1" max="20" step="0.5">
+                <span class="slider-unit">mm</span>
             </div>
             <div class="checkbox-row mt-2">
                 <label class="checkbox-label" for="mirror-x">左右反転</label>
@@ -135,16 +150,22 @@
             <!-- opacity / pointer-events は JS の initUIFromState() で制御 -->
             <div id="controls-base" style="transition: opacity 0.2s;">
                 <div class="slider-container">
-                    <label class="slider-label">余白</label>
+                    <label class="slider-label" for="base-padding">余白</label>
                     <input type="range" id="base-padding" min="0" max="20" step="0.5">
+                    <input type="number" id="val-base-padding" class="slider-val" min="0" max="20" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">厚み</label>
+                    <label class="slider-label" for="base-thickness">厚み</label>
                     <input type="range" id="base-thickness" min="0.5" max="10" step="0.5">
+                    <input type="number" id="val-base-thickness" class="slider-val" min="0.5" max="10" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">角丸</label>
+                    <label class="slider-label" for="base-radius">角丸</label>
                     <input type="range" id="base-radius" min="0" max="20" step="0.5">
+                    <input type="number" id="val-base-radius" class="slider-val" min="0" max="20" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
             </div>
         </div>
@@ -165,12 +186,6 @@
                     <option value="5">正五角形</option>
                 </select>
 
-                <!-- 補強板: 真円選択時のみ表示。表示制御は updateReinforceVisibility() が行う -->
-                <div id="ctrl-ring-reinforce" class="checkbox-row">
-                    <label class="checkbox-label accent" for="ring-reinforce">補強板</label>
-                    <input type="checkbox" id="ring-reinforce">
-                </div>
-
                 <div class="checkbox-row">
                     <label class="checkbox-label accent" for="ring-auto-y">上端に自動配置</label>
                     <input type="checkbox" id="ring-auto-y">
@@ -178,36 +193,54 @@
 
                 <!-- スライダーと数値入力の双方向バインド -->
                 <div class="slider-container">
-                    <label class="slider-label">X座標</label>
+                    <label class="slider-label" for="ring-x">X座標</label>
                     <input type="range" id="ring-x" min="-100" max="100" step="0.5">
                     <input type="number" id="val-ring-x" class="slider-val" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">Y座標</label>
+                    <label class="slider-label" for="ring-y">Y座標</label>
                     <input type="range" id="ring-y" min="-100" max="100" step="0.5">
                     <input type="number" id="val-ring-y" class="slider-val" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">サイズ</label>
+                    <label class="slider-label" for="ring-size">サイズ</label>
                     <input type="range" id="ring-size" min="1" max="20" step="0.5">
                     <input type="number" id="val-ring-size" class="slider-val" step="0.5">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">太さ</label>
+                    <label class="slider-label" for="ring-tube">太さ</label>
                     <input type="range" id="ring-tube" min="0.5" max="5" step="0.1">
                     <input type="number" id="val-ring-tube" class="slider-val" step="0.1">
+                    <span class="slider-unit">mm</span>
                 </div>
                 <div class="slider-container">
-                    <label class="slider-label">回転</label>
+                    <label class="slider-label" for="ring-rot">回転</label>
                     <input type="range" id="ring-rot" min="0" max="360" step="15">
                     <input type="number" id="val-ring-rot" class="slider-val" step="15">
+                    <span class="slider-unit">°</span>
+                </div>
+
+                <!-- 補強板: 真円選択時のみ表示。表示制御は updateReinforceVisibility() が行う -->
+                <div id="ctrl-ring-reinforce" class="checkbox-row mt-2">
+                    <label class="checkbox-label accent" for="ring-reinforce">補強板</label>
+                    <input type="checkbox" id="ring-reinforce">
                 </div>
             </div>
         </div>
 
         <!-- STL バイナリ形式でエクスポート -->
         <div class="control-group">
-            <button id="btn-export" class="btn">STLを出力</button>
+            <button id="btn-export" class="btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span class="btn-text">STLファイルを出力</span>
+            </button>
         </div>
     </div>
 
