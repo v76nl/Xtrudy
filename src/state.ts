@@ -27,6 +27,15 @@ export const SLIDER_CONFIGS = {
     defaultValue: -1,
     unit: "mm",
   },
+  lineSpacing: {
+    sliderId: "text-line-spacing",
+    numId: "val-text-line-spacing",
+    min: -5,
+    max: 20,
+    step: 0.5,
+    defaultValue: 0,
+    unit: "mm",
+  },
   svgScale: {
     sliderId: "svg-scale",
     numId: "val-svg-scale",
@@ -128,6 +137,7 @@ export interface StateType {
   textDirection: "horizontal" | "vertical";
   textSize: number;
   textSpacing: number;
+  lineSpacing: number;
   modelThickness: number;
   svgContent: string | null;
   svgScale: number;
@@ -155,6 +165,7 @@ export const state: StateType = {
   textDirection: "horizontal",
   textSize: SLIDER_CONFIGS.textSize.defaultValue,
   textSpacing: SLIDER_CONFIGS.textSpacing.defaultValue,
+  lineSpacing: SLIDER_CONFIGS.lineSpacing.defaultValue,
   modelThickness: SLIDER_CONFIGS.modelThickness.defaultValue,
   svgContent: null,
   svgScale: SLIDER_CONFIGS.svgScale.defaultValue,

@@ -167,7 +167,7 @@ export function generateTextAndBase(targetBox: THREE.Box3): void {
 
   if (!isVertical) {
     // 横書きモード: 複数行対応 (上から下へ行送り、各行中央揃え)
-    const linePitch = size * 1.35 + Math.max(0, spacing);
+    const linePitch = size * 1.1 + state.lineSpacing;
 
     lines.forEach((line, lineIdx) => {
       const chars = Array.from(line);
@@ -196,7 +196,7 @@ export function generateTextAndBase(targetBox: THREE.Box3): void {
   } else {
     // 縦書きモード: 複数列対応 (日本語縦組ルール: 右から左へ列送り、各文字の水平中心軸を厳密に一致)
     const colCount = lines.length;
-    const colPitch = size * 1.35 + Math.max(0, spacing);
+    const colPitch = size * 1.1 + state.lineSpacing;
     const charPitch = size * 1.05 + spacing;
 
     lines.forEach((colText, colIdx) => {

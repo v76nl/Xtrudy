@@ -38,6 +38,25 @@ export function updateReinforceVisibility(): void {
   if (ctrl) ctrl.style.display = shape === 32 ? "flex" : "none";
 }
 
+export function updateLineSpacingVisibility(): void {
+  const container = document.getElementById("container-line-spacing");
+  const label = document.getElementById("label-line-spacing");
+  if (!container) return;
+
+  const isText = state.mode === "text";
+  const hasMultipleLines = state.text.split("\n").length > 1;
+
+  if (isText && hasMultipleLines) {
+    container.style.display = "flex";
+    if (label) {
+      label.textContent =
+        state.textDirection === "vertical" ? "列間" : "行間";
+    }
+  } else {
+    container.style.display = "none";
+  }
+}
+
 const EXPORT_MODE_STORAGE_KEY = "xtrudy_export_mode";
 const EXPORT_REMEMBER_STORAGE_KEY = "xtrudy_export_remember";
 
@@ -71,6 +90,7 @@ export function setTextDirection(dir: "horizontal" | "vertical"): void {
   btnHoriz?.setAttribute("aria-selected", String(isHoriz));
   btnVert?.classList.toggle("active", !isHoriz);
   btnVert?.setAttribute("aria-selected", String(!isHoriz));
+  updateLineSpacingVisibility();
   updateGeometry();
 }
 
@@ -235,6 +255,7 @@ export function initEvents(): void {
     if (ctrlText) ctrlText.style.display = isText ? "block" : "none";
     const ctrlSvg = document.getElementById("controls-svg");
     if (ctrlSvg) ctrlSvg.style.display = isText ? "none" : "block";
+    updateLineSpacingVisibility();
     updateGeometry();
   }
 
@@ -276,6 +297,7 @@ export function initEvents(): void {
           c.style.pointerEvents = "auto";
         }
       }
+      updateLineSpacingVisibility();
       updateGeometry();
     });
   }
@@ -471,6 +493,9 @@ export function initUIFromState(): void {
 
   // 補強板の表示制御
   updateReinforceVisibility();
+
+  // 行間スライダーの表示制御 (複数行時のみ)
+  updateLineSpacingVisibility();
 
   // エクスポート設定バッジ
   updateExportBadge(getSavedExportMode());
