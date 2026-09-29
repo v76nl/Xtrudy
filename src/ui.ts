@@ -1,10 +1,10 @@
 import { PanelLeftClose, PanelLeftOpen, createElement } from "lucide";
 import * as THREE from "three";
-import { exportSTL } from "./export.ts";
+import { type ExportMode, exportSTL } from "./export.ts";
 import { type FontKey, loadFont } from "./fonts.ts";
 import { updateGeometry } from "./geometry.ts";
 import { camera, renderer, rootGroup } from "./scene.ts";
-import { state } from "./state.ts";
+import { SLIDER_CONFIGS, type SliderKey, state } from "./state.ts";
 
 export function updateDimensionsInfo(): void {
   rootGroup.updateMatrixWorld(true);
@@ -38,34 +38,177 @@ export function updateReinforceVisibility(): void {
   if (ctrl) ctrl.style.display = shape === 32 ? "flex" : "none";
 }
 
+export function updateLineSpacingVisibility(): void {
+  const container = document.getElementById("container-line-spacing");
+  const label = document.getElementById("label-line-spacing");
+  if (!container) return;
+
+  const isText = state.mode === "text";
+  const hasMultipleLines = state.text.split("\n").length > 1;
+
+  if (isText && hasMultipleLines) {
+    container.style.display = "flex";
+    if (label) {
+      label.textContent =
+        state.textDirection === "vertical" ? "列間" : "行間";
+    }
+  } else {
+    container.style.display = "none";
+  }
+}
+
+const EXPORT_MODE_STORAGE_KEY = "xtrudy_export_mode";
+const EXPORT_REMEMBER_STORAGE_KEY = "xtrudy_export_remember";
+
+function getSavedExportMode(): ExportMode {
+  const saved = localStorage.getItem(EXPORT_MODE_STORAGE_KEY);
+  return saved === "multi" ? "multi" : "single";
+}
+
+function getSavedExportRemember(): boolean {
+  return localStorage.getItem(EXPORT_REMEMBER_STORAGE_KEY) === "true";
+}
+
+function updateExportBadge(mode: ExportMode): void {
+  const badge = document.getElementById("export-mode-badge");
+  if (!badge) return;
+  if (mode === "multi") {
+    badge.textContent = "2色印刷用 (パーツ別 ZIP)";
+    badge.classList.add("multi-mode");
+  } else {
+    badge.textContent = "単一ファイル (一体型 STL)";
+    badge.classList.remove("multi-mode");
+  }
+}
+
+export function setTextDirection(dir: "horizontal" | "vertical"): void {
+  state.textDirection = dir;
+  const isHoriz = dir === "horizontal";
+  const btnHoriz = document.getElementById("dir-horizontal");
+  const btnVert = document.getElementById("dir-vertical");
+  btnHoriz?.classList.toggle("active", isHoriz);
+  btnHoriz?.setAttribute("aria-selected", String(isHoriz));
+  btnVert?.classList.toggle("active", !isHoriz);
+  btnVert?.setAttribute("aria-selected", String(!isHoriz));
+  updateLineSpacingVisibility();
+  updateGeometry();
+}
+
+function setupExportUI(): void {
+  const btnExport = document.getElementById(
+    "btn-export",
+  ) as HTMLButtonElement | null;
+  const btnSettings = document.getElementById(
+    "btn-export-settings",
+  ) as HTMLButtonElement | null;
+  const modal = document.getElementById("export-modal");
+  const modalClose = document.getElementById("modal-close");
+  const btnCancel = document.getElementById("btn-modal-cancel");
+  const btnConfirm = document.getElementById("btn-modal-confirm");
+  const optSingle = document.getElementById(
+    "opt-single",
+  ) as HTMLInputElement | null;
+  const optMulti = document.getElementById(
+    "opt-multi",
+  ) as HTMLInputElement | null;
+  const chkRemember = document.getElementById(
+    "export-remember",
+  ) as HTMLInputElement | null;
+
+  const currentMode = getSavedExportMode();
+  updateExportBadge(currentMode);
+
+  const openModal = () => {
+    if (!modal) return;
+    const mode = getSavedExportMode();
+    if (optSingle && optMulti) {
+      if (mode === "multi") {
+        optMulti.checked = true;
+      } else {
+        optSingle.checked = true;
+      }
+    }
+    if (chkRemember) {
+      chkRemember.checked = getSavedExportRemember();
+    }
+    modal.style.display = "flex";
+  };
+
+  const closeModal = () => {
+    if (!modal) return;
+    modal.style.display = "none";
+  };
+
+  btnExport?.addEventListener("click", () => {
+    const isRemembered = getSavedExportRemember();
+    if (isRemembered) {
+      exportSTL(btnExport, getSavedExportMode());
+    } else {
+      openModal();
+    }
+  });
+
+  btnSettings?.addEventListener("click", () => {
+    openModal();
+  });
+
+  modalClose?.addEventListener("click", closeModal);
+  btnCancel?.addEventListener("click", closeModal);
+
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) {
+      closeModal();
+    }
+  });
+
+  btnConfirm?.addEventListener("click", () => {
+    const selectedMode: ExportMode = optMulti?.checked
+      ? "multi"
+      : "single";
+    const remember = chkRemember ? chkRemember.checked : false;
+
+    localStorage.setItem(EXPORT_MODE_STORAGE_KEY, selectedMode);
+    localStorage.setItem(
+      EXPORT_REMEMBER_STORAGE_KEY,
+      remember ? "true" : "false",
+    );
+
+    updateExportBadge(selectedMode);
+    closeModal();
+    exportSTL(btnExport, selectedMode);
+  });
+}
+
 export function initEvents(): void {
-  function bindSliderWithNumber<K extends keyof typeof state>(
-    sliderId: string,
-    numId: string,
-    key: K,
-  ): void {
+  function bindSliderWithNumber(key: SliderKey): void {
+    const cfg = SLIDER_CONFIGS[key];
     const slider = document.getElementById(
-      sliderId,
+      cfg.sliderId,
     ) as HTMLInputElement | null;
     const numInput = document.getElementById(
-      numId,
+      cfg.numId,
     ) as HTMLInputElement | null;
+
+    if (!slider || !numInput) return;
+
+    // DOM 属性 (min, max, step) を TS 側の設定から注入
+    slider.min = String(cfg.min);
+    slider.max = String(cfg.max);
+    slider.step = String(cfg.step);
+    numInput.min = String(cfg.min);
+    numInput.max = String(cfg.max);
+    numInput.step = String(cfg.step);
+
     const handleWheel = (e: WheelEvent) => {
-      if (!slider || slider.disabled) return;
+      if (slider.disabled) return;
       e.preventDefault();
-      const step = Number.parseFloat(slider.step) || 1;
-      const min =
-        slider.min !== ""
-          ? Number.parseFloat(slider.min)
-          : Number.NEGATIVE_INFINITY;
-      const max =
-        slider.max !== ""
-          ? Number.parseFloat(slider.max)
-          : Number.POSITIVE_INFINITY;
+      const step = cfg.step;
+      const min = cfg.min;
+      const max = cfg.max;
       const currentVal = Number.parseFloat(slider.value) || 0;
       const dir = e.deltaY < 0 ? 1 : -1;
       let nextVal = currentVal + dir * step;
-      const stepStr = String(slider.step);
+      const stepStr = String(step);
       const decimals = stepStr.includes(".")
         ? stepStr.split(".")[1].length
         : 0;
@@ -74,36 +217,28 @@ export function initEvents(): void {
       if (nextVal !== currentVal) {
         slider.value = String(nextVal);
         (state[key] as number) = nextVal;
-        if (numInput) numInput.value = String(nextVal);
+        numInput.value = String(nextVal);
         updateGeometry();
       }
     };
 
-    if (slider) {
-      slider.addEventListener("input", () => {
-        const val = Number.parseFloat(slider.value);
-        (state[key] as number) = val;
-        if (numInput) numInput.value = String(val);
-        updateGeometry();
-      });
-      slider.addEventListener("wheel", handleWheel, { passive: false });
-    }
-    if (numInput) {
-      numInput.addEventListener("input", () => {
-        let val = Number.parseFloat(numInput.value);
-        if (Number.isNaN(val)) return;
-        if (slider) {
-          val = Math.min(
-            Number.parseFloat(slider.max),
-            Math.max(Number.parseFloat(slider.min), val),
-          );
-          slider.value = String(val);
-        }
-        (state[key] as number) = val;
-        updateGeometry();
-      });
-      numInput.addEventListener("wheel", handleWheel, { passive: false });
-    }
+    slider.addEventListener("input", () => {
+      const val = Number.parseFloat(slider.value);
+      (state[key] as number) = val;
+      numInput.value = String(val);
+      updateGeometry();
+    });
+    slider.addEventListener("wheel", handleWheel, { passive: false });
+
+    numInput.addEventListener("input", () => {
+      let val = Number.parseFloat(numInput.value);
+      if (Number.isNaN(val)) return;
+      val = Math.min(cfg.max, Math.max(cfg.min, val));
+      slider.value = String(val);
+      (state[key] as number) = val;
+      updateGeometry();
+    });
+    numInput.addEventListener("wheel", handleWheel, { passive: false });
   }
 
   function setMode(m: "text" | "svg") {
@@ -120,6 +255,7 @@ export function initEvents(): void {
     if (ctrlText) ctrlText.style.display = isText ? "block" : "none";
     const ctrlSvg = document.getElementById("controls-svg");
     if (ctrlSvg) ctrlSvg.style.display = isText ? "none" : "block";
+    updateLineSpacingVisibility();
     updateGeometry();
   }
 
@@ -129,9 +265,22 @@ export function initEvents(): void {
   if (btnSvg) btnSvg.onclick = () => setMode("svg");
   setMode(state.mode);
 
+  const btnDirHoriz = document.getElementById("dir-horizontal");
+  const btnDirVert = document.getElementById("dir-vertical");
+  if (btnDirHoriz) {
+    btnDirHoriz.addEventListener("click", () =>
+      setTextDirection("horizontal"),
+    );
+  }
+  if (btnDirVert) {
+    btnDirVert.addEventListener("click", () =>
+      setTextDirection("vertical"),
+    );
+  }
+
   const inputText = document.getElementById(
     "input-text",
-  ) as HTMLInputElement | null;
+  ) as HTMLTextAreaElement | null;
   if (inputText) {
     inputText.addEventListener("input", () => {
       const val = inputText.value;
@@ -148,17 +297,15 @@ export function initEvents(): void {
           c.style.pointerEvents = "auto";
         }
       }
+      updateLineSpacingVisibility();
       updateGeometry();
     });
   }
 
-  bindSliderWithNumber("text-size", "val-text-size", "textSize");
-  bindSliderWithNumber("text-spacing", "val-text-spacing", "textSpacing");
-  bindSliderWithNumber(
-    "model-thickness",
-    "val-model-thickness",
-    "modelThickness",
-  );
+  // 全スライダーの設定反映 & 双方向バインドを一括実行
+  (Object.keys(SLIDER_CONFIGS) as SliderKey[]).forEach((key) => {
+    bindSliderWithNumber(key);
+  });
 
   const fontSelect = document.getElementById(
     "font-select",
@@ -189,8 +336,6 @@ export function initEvents(): void {
     });
   }
 
-  bindSliderWithNumber("svg-scale", "val-svg-scale", "svgScale");
-
   const baseEnableCheck = document.getElementById(
     "base-enable",
   ) as HTMLInputElement | null;
@@ -205,14 +350,6 @@ export function initEvents(): void {
       updateGeometry();
     });
   }
-
-  bindSliderWithNumber("base-padding", "val-base-padding", "basePadding");
-  bindSliderWithNumber(
-    "base-thickness",
-    "val-base-thickness",
-    "baseThickness",
-  );
-  bindSliderWithNumber("base-radius", "val-base-radius", "baseRadius");
 
   const ringEnableCheck = document.getElementById(
     "ring-enable",
@@ -239,13 +376,6 @@ export function initEvents(): void {
     });
   }
 
-  // リングスライダー: range と number 入力を双方向でバインド
-  bindSliderWithNumber("ring-x", "val-ring-x", "ringX");
-  bindSliderWithNumber("ring-y", "val-ring-y", "ringY");
-  bindSliderWithNumber("ring-size", "val-ring-size", "ringSize");
-  bindSliderWithNumber("ring-tube", "val-ring-tube", "ringTube");
-  bindSliderWithNumber("ring-rot", "val-ring-rot", "ringRot");
-
   const ringShapeEl = document.getElementById(
     "ring-shape",
   ) as HTMLSelectElement | null;
@@ -267,14 +397,8 @@ export function initEvents(): void {
     });
   }
 
-  const exportBtn = document.getElementById(
-    "btn-export",
-  ) as HTMLButtonElement | null;
-  if (exportBtn) {
-    exportBtn.addEventListener("click", () => {
-      exportSTL(exportBtn);
-    });
-  }
+  // エクスポートボタングループおよびモーダル初期化
+  setupExportUI();
 
   const mirrorCheck = document.getElementById(
     "mirror-x",
@@ -317,7 +441,6 @@ export function initEvents(): void {
 }
 
 // UI 初期化: state -> DOM への一方向同期
-// 初期値は state オブジェクトのみで管理し、HTML 側には value/checked 属性を書かない
 export function initUIFromState(): void {
   const set = (id: string, val: any) => {
     const el = document.getElementById(id) as HTMLInputElement | null;
@@ -345,6 +468,9 @@ export function initUIFromState(): void {
   set("font-select", state.fontKey);
   check("mirror-x", state.mirrorX);
 
+  // 書字方向
+  setTextDirection(state.textDirection);
+
   // 土台 & リングのトグル・オプション
   check("base-enable", state.baseEnabled);
   panelOpacity("controls-base", state.baseEnabled);
@@ -355,23 +481,10 @@ export function initUIFromState(): void {
   check("ring-auto-y", state.ringAutoY);
 
   // 全スライダー & 数値入力ペアの一括反映
-  const sliderProps: [string, string, keyof typeof state][] = [
-    ["text-size", "val-text-size", "textSize"],
-    ["text-spacing", "val-text-spacing", "textSpacing"],
-    ["svg-scale", "val-svg-scale", "svgScale"],
-    ["model-thickness", "val-model-thickness", "modelThickness"],
-    ["base-padding", "val-base-padding", "basePadding"],
-    ["base-thickness", "val-base-thickness", "baseThickness"],
-    ["base-radius", "val-base-radius", "baseRadius"],
-    ["ring-x", "val-ring-x", "ringX"],
-    ["ring-y", "val-ring-y", "ringY"],
-    ["ring-size", "val-ring-size", "ringSize"],
-    ["ring-tube", "val-ring-tube", "ringTube"],
-    ["ring-rot", "val-ring-rot", "ringRot"],
-  ];
-  sliderProps.forEach(([sid, nid, prop]) => {
-    set(sid, state[prop]);
-    set(nid, state[prop]);
+  (Object.keys(SLIDER_CONFIGS) as SliderKey[]).forEach((key) => {
+    const cfg = SLIDER_CONFIGS[key];
+    set(cfg.sliderId, state[key]);
+    set(cfg.numId, state[key]);
   });
 
   // Auto Top Align 時は ring-y を無効化
@@ -380,4 +493,10 @@ export function initUIFromState(): void {
 
   // 補強板の表示制御
   updateReinforceVisibility();
+
+  // 行間スライダーの表示制御 (複数行時のみ)
+  updateLineSpacingVisibility();
+
+  // エクスポート設定バッジ
+  updateExportBadge(getSavedExportMode());
 }

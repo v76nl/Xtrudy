@@ -28,6 +28,7 @@
   "dependencies": {
     "@types/three": "^0.185.0",
     "clipper2-js": "^1.2.4",
+    "jszip": "^3.10.2",
     "lucide": "^1.48.0",
     "opentype.js": "^2.0.0",
     "three": "^0.185.1"

@@ -241,13 +241,37 @@ input[type="file"] {
   width: 100%;
 }
 
-.input-with-icon-wrapper input[type="text"] {
+.input-with-icon-wrapper input[type="text"],
+.input-with-icon-wrapper textarea {
+  width: 100%;
   padding-right: 2rem;
+  box-sizing: border-box;
+}
+
+.input-with-icon-wrapper textarea {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  border-radius: 3px;
+  padding: 0.4rem 2rem 0.4rem 0.5rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 2.75rem;
+  line-height: 1.4;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input-with-icon-wrapper textarea:focus {
+  outline: none;
+  border-color: #ea580c;
+  box-shadow: 0 0 0 1px #ea580c;
 }
 
 .input-edit-icon {
   position: absolute;
   right: 0.6rem;
+  top: 0.65rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -527,4 +551,215 @@ input[type="checkbox"] {
 
 .gizmo-label:hover {
   filter: brightness(1.3);
+}
+
+/* ==========================================================================
+   Export Button & Modal
+   ========================================================================== */
+.export-btn-group {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.btn-export-main {
+  flex: 1;
+  margin-top: 0;
+}
+
+.btn-export-settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.65rem;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-export-settings:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.export-mode-badge {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 0.35rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* エクスポート形式選択モーダル */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  width: 100%;
+  max-width: 440px;
+  overflow: hidden;
+  animation: modalFadeIn 0.15s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.2rem;
+}
+
+.modal-close-btn:hover {
+  color: #0f172a;
+}
+
+.modal-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.modal-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modal-option:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.modal-option:has(input:checked) {
+  border-color: #ea580c;
+  background: rgba(234, 88, 12, 0.03);
+}
+
+.modal-option input[type="radio"] {
+  margin-top: 0.15rem;
+  accent-color: #ea580c;
+  cursor: pointer;
+}
+
+.option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.option-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.option-desc {
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.modal-remember-row {
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-modal-primary {
+  background: #ea580c;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-modal-primary:hover {
+  background: #c2410c;
+}
+
+.btn-modal-secondary {
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-modal-secondary:hover {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #94a3b8;
 }

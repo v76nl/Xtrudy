@@ -63,20 +63,73 @@ export function flipYCorrectly(
 // clipper2-js は整数座標で動作するため、浮動小数点座標を整数にスケールして渡す
 export const CLIPPER_SCALE = 1e6;
 
+// 縦書き時に時計回り90度回転すべき記号類 (長音符、ダッシュ、括弧など)
+export const VERTICAL_ROTATING_CHARS = new Set([
+  "ー",
+  "―",
+  "—",
+  "‐",
+  "−",
+  "-",
+  "–",
+  "〜",
+  "～",
+  "：",
+  ":",
+  "…",
+  "‥",
+  "（",
+  "）",
+  "(",
+  ")",
+  "〔",
+  "〕",
+  "［",
+  "］",
+  "[",
+  "]",
+  "｛",
+  "｝",
+  "{",
+  "}",
+  "〈",
+  "〉",
+  "《",
+  "》",
+  "「",
+  "」",
+  "『",
+  "』",
+  "【",
+  "】",
+]);
+
 // THREE.Shape の点列を Clipper 用の整数座標 Path64 に変換する。
 // offsetX / offsetY を指定すると座標をシフトしてから変換する (文字カーソル位置の適用に使用)。
+// rotateClockwise90 が true の場合、(pivotX, pivotY) を中心に時計回りに 90 度回転する。
 export function threeShapeToPath64(
   shape: THREE.Shape,
   curveSegments = 12,
   offsetX = 0,
   offsetY = 0,
+  rotateClockwise90 = false,
+  pivotX = 0,
+  pivotY = 0,
 ): Path64 {
   const pts = shape.getPoints(curveSegments);
   const path = new Path64();
   pts.forEach((p) => {
+    let px = p.x;
+    let py = p.y;
+    if (rotateClockwise90) {
+      const rx = pivotX + (py - pivotY);
+      const ry = pivotY - (px - pivotX);
+      px = rx;
+      py = ry;
+    }
     path.push({
-      x: Math.round((p.x + offsetX) * CLIPPER_SCALE),
-      y: Math.round((p.y + offsetY) * CLIPPER_SCALE),
+      x: Math.round((px + offsetX) * CLIPPER_SCALE),
+      y: Math.round((py + offsetY) * CLIPPER_SCALE),
     });
   });
   return path;
