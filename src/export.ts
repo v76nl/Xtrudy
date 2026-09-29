@@ -1,13 +1,76 @@
+import JSZip from "jszip";
 import * as THREE from "three";
 import { STLExporter } from "three/addons/exporters/STLExporter";
 import {
   mergeGeometries,
   mergeVertices,
 } from "three/addons/utils/BufferGeometryUtils";
-import { rootGroup } from "./scene.ts";
+import { groupBase, groupMain, groupRing, rootGroup } from "./scene.ts";
 
-// シーン内の全メッシュをワールド座標で結合し、重複頂点を溶接してバイナリ STL として出力する
-export function exportSTL(exportBtn: HTMLButtonElement | null): void {
+export type ExportMode = "single" | "multi";
+
+/**
+ * 指定したオブジェクト配下の全メッシュをワールド座標系でマージ・溶接し、
+ * バイナリ STL の ArrayBuffer として出力する。メッシュが存在しない場合は null を返す。
+ */
+export function generateSTLFromObjects(
+  objects: THREE.Object3D[],
+): ArrayBuffer | null {
+  rootGroup.updateMatrixWorld(true);
+  const geometries: THREE.BufferGeometry[] = [];
+
+  for (const obj of objects) {
+    obj.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const geom = child.geometry.clone();
+      geom.applyMatrix4(child.matrixWorld);
+      geom.deleteAttribute("uv");
+      geometries.push(geom);
+    });
+  }
+
+  if (geometries.length === 0) {
+    return null;
+  }
+
+  const merged = mergeGeometries(geometries);
+  if (!merged) {
+    for (const g of geometries) {
+      g.dispose();
+    }
+    throw new Error("ジオメトリのマージに失敗しました。");
+  }
+
+  const welded = mergeVertices(merged, 1e-4);
+  welded.computeVertexNormals();
+  for (const g of geometries) {
+    g.dispose();
+  }
+  merged.dispose();
+
+  const exporter = new STLExporter();
+  const exportMesh = new THREE.Mesh(welded);
+  const result = exporter.parse(exportMesh, { binary: true });
+  welded.dispose();
+
+  if (result instanceof DataView) {
+    return result.buffer.slice(
+      result.byteOffset,
+      result.byteOffset + result.byteLength,
+    );
+  }
+  return result as unknown as ArrayBuffer;
+}
+
+/**
+ * STL / ZIP エクスポートの実行
+ * @param exportBtn UIのボタン要素（ローディング表示用）
+ * @param mode "single" (単一STL) または "multi" (2色パーツ別ZIP)
+ */
+export async function exportSTL(
+  exportBtn: HTMLButtonElement | null,
+  mode: ExportMode = "single",
+): Promise<void> {
   if (!exportBtn) return;
   const originalHTML = exportBtn.innerHTML;
   exportBtn.disabled = true;
@@ -19,52 +82,63 @@ export function exportSTL(exportBtn: HTMLButtonElement | null): void {
     exportBtn.textContent = "生成中...";
   }
 
-  setTimeout(() => {
-    try {
-      // 1. 全メッシュのジオメトリをワールド座標に変換して収集
-      rootGroup.updateMatrixWorld(true);
-      const geometries: THREE.BufferGeometry[] = [];
-      rootGroup.traverse((obj) => {
-        if (!(obj instanceof THREE.Mesh)) return;
-        const geom = obj.geometry.clone();
-        geom.applyMatrix4(obj.matrixWorld);
-        // mergeGeometries はインデックスなしジオメトリを想定するため UV 等を削除
-        geom.deleteAttribute("uv");
-        geometries.push(geom);
-      });
+  // UI 更新を描画させるため少し待機
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
-      if (geometries.length === 0) {
+  try {
+    const timestamp = Date.now();
+
+    if (mode === "single") {
+      // 1. 全パーツを1つの STL として出力
+      const buffer = generateSTLFromObjects([rootGroup]);
+      if (!buffer) {
         alert("エクスポートするメッシュがありません。");
         return;
       }
-
-      // 2. 1つのジオメトリに統合し、重複頂点を溶接
-      const merged = mergeGeometries(geometries);
-      if (!merged) throw new Error("mergeGeometries に失敗しました。");
-      const welded = mergeVertices(merged, 1e-4);
-      welded.computeVertexNormals();
-      geometries.forEach((g) => g.dispose());
-      merged.dispose();
-
-      // 3. STL エクスポート
-      const exporter = new STLExporter();
-      const exportMesh = new THREE.Mesh(welded);
-      const result = exporter.parse(exportMesh, { binary: true });
-      welded.dispose();
-
-      const blob = new Blob([result], {
+      const blob = new Blob([buffer], {
         type: "application/octet-stream",
       });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `keychain_v3.5_${Date.now()}.stl`;
+      link.download = `keychain_single_${timestamp}.stl`;
       link.click();
-    } catch (err: any) {
-      console.error("Export error:", err);
-      alert("エクスポートに失敗しました: " + err.message);
-    } finally {
-      exportBtn.disabled = false;
-      exportBtn.innerHTML = originalHTML;
+      URL.revokeObjectURL(link.href);
+    } else {
+      // 2. 2色用マルチパーツ (文字/SVG + 土台/リング) を ZIP で出力
+      const mainBuffer = generateSTLFromObjects([groupMain]);
+      const baseBuffer = generateSTLFromObjects([groupBase, groupRing]);
+
+      if (!mainBuffer && !baseBuffer) {
+        alert("エクスポートするメッシュがありません。");
+        return;
+      }
+
+      const zip = new JSZip();
+      if (mainBuffer) {
+        zip.file("part_main.stl", mainBuffer);
+      }
+      if (baseBuffer) {
+        zip.file("part_base.stl", baseBuffer);
+      }
+
+      const zipBlob = await zip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(zipBlob);
+      link.download = `keychain_2color_${timestamp}.zip`;
+      link.click();
+      URL.revokeObjectURL(link.href);
     }
-  }, 50);
+  } catch (err: unknown) {
+    console.error("Export error:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    alert(`エクスポートに失敗しました: ${msg}`);
+  } finally {
+    exportBtn.disabled = false;
+    exportBtn.innerHTML = originalHTML;
+  }
 }
