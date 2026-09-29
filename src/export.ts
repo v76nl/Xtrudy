@@ -6,6 +6,7 @@ import {
   mergeVertices,
 } from "three/addons/utils/BufferGeometryUtils";
 import { groupBase, groupMain, groupRing, rootGroup } from "./scene.ts";
+import { state } from "./state.ts";
 
 export type ExportMode = "single" | "multi";
 
@@ -62,6 +63,33 @@ export function generateSTLFromObjects(
   return result as unknown as ArrayBuffer;
 }
 
+function formatDateTime(d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const mins = pad(d.getMinutes());
+  const secs = pad(d.getSeconds());
+  return `${year}${month}${day}_${hours}${mins}${secs}`;
+}
+
+export function getExportBaseName(): string {
+  let label = "model";
+  if (state.mode === "text") {
+    const clean = state.text
+      .trim()
+      .replace(/[\r\n]+/g, "-")
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .slice(0, 30);
+    if (clean) label = clean;
+  } else if (state.mode === "svg") {
+    label = "svg";
+  }
+  const dateStr = formatDateTime();
+  return `xtrudy-${label}-${dateStr}`;
+}
+
 /**
  * STL / ZIP エクスポートの実行
  * @param exportBtn UIのボタン要素（ローディング表示用）
@@ -86,7 +114,7 @@ export async function exportSTL(
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   try {
-    const timestamp = Date.now();
+    const baseName = getExportBaseName();
 
     if (mode === "single") {
       // 1. 全パーツを1つの STL として出力
@@ -100,7 +128,7 @@ export async function exportSTL(
       });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `keychain_single_${timestamp}.stl`;
+      link.download = `${baseName}.stl`;
       link.click();
       URL.revokeObjectURL(link.href);
     } else {
@@ -129,7 +157,7 @@ export async function exportSTL(
 
       const link = document.createElement("a");
       link.href = URL.createObjectURL(zipBlob);
-      link.download = `keychain_2color_${timestamp}.zip`;
+      link.download = `${baseName}.zip`;
       link.click();
       URL.revokeObjectURL(link.href);
     }
