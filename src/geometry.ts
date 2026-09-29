@@ -18,6 +18,7 @@ import { state } from "./state.ts";
 import { updateDimensionsInfo } from "./ui.ts";
 import {
   CLIPPER_SCALE,
+  VERTICAL_ROTATING_CHARS,
   createRoundedRectPaths64,
   flipYCorrectly,
   parseCommandsToRawShapes,
@@ -158,21 +159,101 @@ export function generateTextAndBase(targetBox: THREE.Box3): void {
   if (!state.text) return;
   const size = state.textSize;
   const spacing = state.textSpacing;
-  const chars = Array.from(state.text);
+  const isVertical = state.textDirection === "vertical";
+  const lines = state.text.split("\n");
 
-  // 1. 全文字のサブパスを X オフセット付きで Clipper Path64 に変換して収集
+  // 1. 全文字のサブパスを計算して収集 (横書き: 行送り・中央揃え / 縦書き: 右から左へ列送り・軸中心揃え)
   const allRawPaths = new Paths64();
-  let cursorX = 0;
 
-  chars.forEach((char) => {
-    const fontPath = currentFont.getPath(char, 0, 0, size);
-    parseCommandsToRawShapes(fontPath.commands).forEach((shape) => {
-      const p64 = threeShapeToPath64(shape, 12, cursorX, 0);
-      if (p64.length >= 3) allRawPaths.push(p64);
+  if (!isVertical) {
+    // 横書きモード: 複数行対応 (上から下へ行送り、各行中央揃え)
+    const linePitch = size * 1.35 + Math.max(0, spacing);
+
+    lines.forEach((line, lineIdx) => {
+      const chars = Array.from(line);
+      if (chars.length === 0) return;
+
+      let lineWidth = 0;
+      chars.forEach((c) => {
+        lineWidth +=
+          (currentFont.getAdvanceWidth(c, size) as number) + spacing;
+      });
+      lineWidth -= spacing;
+
+      let cursorX = -lineWidth / 2;
+      const lineY = lineIdx * linePitch;
+
+      chars.forEach((char) => {
+        const fontPath = currentFont.getPath(char, 0, 0, size);
+        parseCommandsToRawShapes(fontPath.commands).forEach((shape) => {
+          const p64 = threeShapeToPath64(shape, 12, cursorX, lineY);
+          if (p64.length >= 3) allRawPaths.push(p64);
+        });
+        cursorX +=
+          (currentFont.getAdvanceWidth(char, size) as number) + spacing;
+      });
     });
-    cursorX +=
-      (currentFont.getAdvanceWidth(char, size) as number) + spacing;
-  });
+  } else {
+    // 縦書きモード: 複数列対応 (日本語縦組ルール: 右から左へ列送り、各文字の水平中心軸を厳密に一致)
+    const colCount = lines.length;
+    const colPitch = size * 1.35 + Math.max(0, spacing);
+    const charPitch = size * 1.05 + spacing;
+
+    lines.forEach((colText, colIdx) => {
+      const chars = Array.from(colText);
+      if (chars.length === 0) return;
+
+      // 日本語の縦書きは右から左へ列が進む: 第0列が最も右側
+      const colCenterX = ((colCount - 1) / 2 - colIdx) * colPitch;
+
+      chars.forEach((char, rowIdx) => {
+        const fontPath = currentFont.getPath(char, 0, 0, size);
+        const rawShapes = parseCommandsToRawShapes(fontPath.commands);
+        if (rawShapes.length === 0) return;
+
+        // 文字のバウンディングボックスを計算して水平中心・垂直中心を求める
+        let cMinX = Number.POSITIVE_INFINITY;
+        let cMaxX = Number.NEGATIVE_INFINITY;
+        let cMinY = Number.POSITIVE_INFINITY;
+        let cMaxY = Number.NEGATIVE_INFINITY;
+
+        rawShapes.forEach((s) => {
+          s.getPoints(8).forEach((p) => {
+            if (p.x < cMinX) cMinX = p.x;
+            if (p.x > cMaxX) cMaxX = p.x;
+            if (p.y < cMinY) cMinY = p.y;
+            if (p.y > cMaxY) cMaxY = p.y;
+          });
+        });
+
+        const charMidX = (cMinX + cMaxX) / 2;
+        const charMidY = (cMinY + cMaxY) / 2;
+
+        // 長音符「ー」やダッシュ・括弧等の回転判定
+        const rotate = VERTICAL_ROTATING_CHARS.has(char);
+
+        // 垂直軸合わせ: 文字の幾何学的中心 charMidX を列中心 colCenterX に一致させる (軸ブレ防止)
+        const offsetX = colCenterX - charMidX;
+
+        // 縦送り: 各文字のスロット中心へ配置 (flipYCorrectly 前の空間では +Y が画面下の方向)
+        const slotCenterY = rowIdx * charPitch;
+        const offsetY = slotCenterY - charMidY;
+
+        rawShapes.forEach((shape) => {
+          const p64 = threeShapeToPath64(
+            shape,
+            12,
+            offsetX,
+            offsetY,
+            rotate,
+            charMidX,
+            charMidY,
+          );
+          if (p64.length >= 3) allRawPaths.push(p64);
+        });
+      });
+    });
+  }
 
   if (allRawPaths.length === 0) return;
 
